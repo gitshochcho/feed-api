@@ -4,27 +4,37 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
+
 	"feed-api/internal/config"
 	"feed-api/internal/database"
-	"feed-api/internal/handler"
+	"feed-api/internal/routes"
 )
 
 func main() {
 	// 1. Load Config & Connect DB
 	cfg := config.LoadConfig()
+	// Gin reads GIN_MODE before .env is loaded, so apply it explicitly
+	gin.SetMode(cfg.GinMode)
+
 	db := database.ConnectDB(cfg)
-	defer db.Close()
 
-	// 2. Setup Gin Router
-	r := gin.Default()
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("Failed to get underlying sql.DB: %v", err)
+	}
+	defer sqlDB.Close()
 
-	// 3. Initialize Handler & Register Route
-	vendorHandler := handler.NewVendorHandler(db)
-	r.POST("/vendors", vendorHandler.CreateVendor)
+	// 2. Create/update tables (opt-in: only for databases this app owns)
+	if cfg.AutoMigrate {
+		database.Migrate(db)
+	}
+
+	// 3. Setup Router (all route files are registered in internal/routes)
+	r := routes.SetupRouter(db)
 
 	// 4. Start Server
 	log.Printf("Server starting on port %s...", cfg.ServerPort)
-	if err := r.Run(":"+cfg.ServerPort); err != nil {
+	if err := r.Run(":" + cfg.ServerPort); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
