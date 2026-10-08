@@ -1,60 +1,54 @@
 package handler
 
 import (
-	"database/sql"
+	"errors"
 	"log"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+
+	"feed-api/internal/dto"
 	"feed-api/internal/model"
+	"feed-api/internal/repository"
 )
 
 type VendorHandler struct {
-	db *sql.DB
+	repo *repository.VendorRepository
 }
 
-func NewVendorHandler(db *sql.DB) *VendorHandler {
-	return &VendorHandler{db: db}
+func NewVendorHandler(repo *repository.VendorRepository) *VendorHandler {
+	return &VendorHandler{repo: repo}
 }
 
 func (h *VendorHandler) CreateVendor(c *gin.Context) {
-	var vendor model.Vendor
+	var req dto.CreateVendorRequest
 
 	// 1. Validate JSON input
-	if err := c.ShouldBindJSON(&vendor); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request. 'name' and 'external_id' are required."})
 		return
 	}
 
-	// 2. Set the current timestamp
-	vendor.CreatedAt = time.Now()
+	vendor := model.Vendor{
+		Name:       req.Name,
+		ExternalID: req.ExternalID,
+	}
 
-	// 3. Insert into database (now including created_at)
-	query := `INSERT INTO vendors (name, external_id, created_at) VALUES ($1, $2, $3) RETURNING id`
-	var id int
-
-	err := h.db.QueryRow(query, vendor.Name, vendor.ExternalID, vendor.CreatedAt).Scan(&id)
-	if err != nil {
-		log.Printf("Database error: %v", err)
-		
-		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
-			c.JSON(http.StatusConflict, gin.H{"error": "A vendor with this external_id already exists."})
+	// 2. Insert into database (GORM sets ID and CreatedAt)
+	if err := h.repo.Create(c.Request.Context(), &vendor); err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			c.JSON(http.StatusConflict, gin.H{"error": "A vendor with this name or external_id already exists."})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to insert vendor into database", "details": err.Error()})
+		log.Printf("Database error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to insert vendor into database"})
 		return
 	}
 
-	// 4. Return success
+	// 3. Return success
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Vendor created successfully",
-		"data": gin.H{
-			"id":          id,
-			"name":        vendor.Name,
-			"external_id": vendor.ExternalID,
-			"created_at":  vendor.CreatedAt,
-		},
+		"data":    vendor,
 	})
 }
