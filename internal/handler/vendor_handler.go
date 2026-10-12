@@ -9,7 +9,6 @@ import (
 	"gorm.io/gorm"
 
 	"feed-api/internal/dto"
-	"feed-api/internal/model"
 	"feed-api/internal/repository"
 )
 
@@ -30,25 +29,26 @@ func (h *VendorHandler) CreateVendor(c *gin.Context) {
 		return
 	}
 
-	vendor := model.Vendor{
-		Name:       req.Name,
-		ExternalID: req.ExternalID,
-	}
-
-	// 2. Insert into database (GORM sets ID and CreatedAt)
-	if err := h.repo.Create(c.Request.Context(), &vendor); err != nil {
+	// 2. Upsert the vendor by external_id and link it to every store (one transaction)
+	result, err := h.repo.Upsert(c.Request.Context(), req.Name, req.ExternalID)
+	if err != nil {
+		// external_id is the upsert key, so a duplicate here means the name belongs to another vendor.
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
-			c.JSON(http.StatusConflict, gin.H{"error": "A vendor with this name or external_id already exists."})
+			c.JSON(http.StatusConflict, gin.H{"error": "A vendor with this name already exists."})
 			return
 		}
 		log.Printf("Database error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to insert vendor into database"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save vendor"})
 		return
 	}
 
-	// 3. Return success
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Vendor created successfully",
-		"data":    vendor,
-	})
+	// 3. Return success: 201 when created, 200 when updated or unchanged
+	status, message := http.StatusOK, "Vendor unchanged"
+	switch result.Action {
+	case "inserted":
+		status, message = http.StatusCreated, "Vendor created successfully"
+	case "updated":
+		message = "Vendor updated successfully"
+	}
+	c.JSON(status, gin.H{"message": message, "data": result})
 }
