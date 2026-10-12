@@ -17,5 +17,10 @@ func SetupRouter(db *gorm.DB) *gin.Engine {
 	vendorHandler := handler.NewVendorHandler(vendorRepo)
 	RegisterVendorRoutes(r.Group("/vendors"), vendorHandler)
 
+	// Product hierarchies
+	productHierarchyRepo := repository.NewProductHierarchyRepository(db)
+	productHierarchyHandler := handler.NewProductHierarchyHandler(productHierarchyRepo)
+	RegisterProductHierarchyRoutes(r.Group("/product-hierarchies"), productHierarchyHandler)
+
 	return r
 }

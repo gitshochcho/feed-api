@@ -3,46 +3,11 @@
 A REST API built with [Gin](https://github.com/gin-gonic/gin), [GORM](https://gorm.io) and PostgreSQL for managing vendor feed data.
 
 ## Contents
-- [Tech stack](#tech-stack)
-- [Project structure](#project-structure)
 - [Run locally](#run-locally)
-- [API endpoints](#api-endpoints)
-- [Adding a new route file](#adding-a-new-route-file)
 - [Build a binary](#build-a-binary)
 - [Host live (Ubuntu VPS)](#host-live-ubuntu-vps)
 - [Production checklist](#production-checklist)
 - [Lifecycle guide: startup → request → DB insert → go-live](docs/LIFECYCLE.md)
-
-## Tech stack
-
-| Layer    | Choice                                                  |
-|----------|---------------------------------------------------------|
-| Language | Go 1.27+                                                |
-| HTTP     | Gin                                                     |
-| ORM      | GORM (`gorm.io/gorm`) + official Postgres driver (pgx)  |
-| Database | PostgreSQL                                              |
-| Hosting  | Linux VPS, systemd, Nginx, Let's Encrypt                |
-
-## Project structure
-
-```
-cmd/main.go                 Entry point: config -> DB -> (migrate) -> router -> run
-internal/
-  config/                   Environment/config loading
-  database/                 GORM connection, pool settings, AutoMigrate
-  model/                    GORM entities (DB tables)
-  dto/                      Request/response structs + validation tags
-  repository/               All database queries (one file per resource)
-  handler/                  HTTP handlers (one file per resource)
-  routes/
-    routes.go               SetupRouter: wires everything, registers route groups
-    vendor_routes.go        /vendors endpoints
-.claude/                    Guide + settings for AI coding assistants
-```
-
-Request flow: `routes` → `handler` → `repository` → `model`.
-
----
 
 ## Run locally
 
@@ -156,58 +121,6 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8080/vendors `
 | `Warning: .env file not found`                  | Run the command from the project root, where `.env` lives.                          |
 
 ---
-
-## API endpoints
-
-### Create a vendor
-
-```
-POST /vendors
-Content-Type: application/json
-```
-
-```json
-{ "name": "Acme Corp", "external_id": "acme-001" }
-```
-
-Success response (`201 Created`):
-```json
-{
-  "message": "Vendor created successfully",
-  "data": { "id": 1, "name": "Acme Corp", "external_id": "acme-001", "created_at": "2026-10-07T10:00:00Z" }
-}
-```
-
-| Status | Meaning                                                   |
-|--------|-----------------------------------------------------------|
-| 201    | Vendor created                                            |
-| 400    | Missing/invalid `name` or `external_id`                   |
-| 409    | A vendor with the same `name` or `external_id` exists     |
-| 500    | Database error (details are logged, not returned)         |
-
-## Adding a new route file
-
-Example: a `feeds` resource.
-
-1. `internal/model/feed.go`: the GORM struct.
-2. `internal/dto/feed_dto.go`: request structs with `binding:"required"` tags.
-3. `internal/repository/feed_repository.go`: GORM queries (`r.db.WithContext(ctx)...`).
-4. `internal/handler/feed_handler.go`: HTTP handlers that call the repository.
-5. `internal/routes/feed_routes.go`:
-   ```go
-   func RegisterFeedRoutes(rg *gin.RouterGroup, h *handler.FeedHandler) {
-       rg.GET("", h.ListFeeds)
-       rg.POST("", h.CreateFeed)
-       rg.GET("/:id", h.GetFeed)
-   }
-   ```
-6. `internal/routes/routes.go`: wire it up:
-   ```go
-   feedRepo := repository.NewFeedRepository(db)
-   feedHandler := handler.NewFeedHandler(feedRepo)
-   RegisterFeedRoutes(r.Group("/feeds"), feedHandler)
-   ```
-7. If this app owns the table, add `&model.Feed{}` to `database.Migrate`.
 
 ## Build a binary
 

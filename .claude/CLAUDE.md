@@ -31,7 +31,7 @@ routes/<x>_routes.go  ->  handler/<x>_handler.go  ->  repository/<x>_repository.
 5. `internal/routes/feed_routes.go`: `RegisterFeedRoutes(rg *gin.RouterGroup, h *handler.FeedHandler)`.
 6. `internal/routes/routes.go`: build the repo and handler, then call `RegisterFeedRoutes(r.Group("/feeds"), feedHandler)`.
 7. If this app owns the table, add the model to `database.Migrate` in `internal/database/db.go`.
-8. Document the endpoint in `README.md`.
+8. Add the requests (with test scripts) as a new folder in `postman/feed-api.json`. `README.md` holds only run/host steps; don't document endpoints there.
 
 ## Conventions
 - Errors: the DB is opened with `TranslateError: true`, so use `errors.Is(err, gorm.ErrDuplicatedKey)` → 409 and `gorm.ErrRecordNotFound` → 404. Never string-match driver errors.

@@ -1,0 +1,1119 @@
+{
+  "info": {
+    "name": "feed-api",
+    "description": "All feed-api endpoints, one folder per route file (internal/routes/*_routes.go).\n\n1. Start the API: go run ./cmd\n2. Set the baseUrl collection variable if your server is not http://localhost:8080\n3. Run the whole collection with the Collection Runner (requests run in order; some depend on earlier ones).\n4. Afterwards, run docs/postman_cleanup.sql to remove the test rows.\n\nProduct Hierarchies scenarios 4, 5, 6 and 8 only show \"inserted\" on the first run; run the cleanup SQL before repeating them.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "vendorName",
+      "value": ""
+    },
+    {
+      "key": "vendorExternalId",
+      "value": ""
+    },
+    {
+      "key": "dept9991Id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Vendors",
+      "description": "POST /vendors (internal/routes/vendor_routes.go). Run 01 before 02.",
+      "item": [
+        {
+          "name": "01 - Create vendor (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Unique values every run, so this request never hits 409. Saved for \"02 - Duplicate vendor\".",
+                  "const ts = Date.now();",
+                  "pm.collectionVariables.set('vendorName', 'Postman Test Vendor ' + ts);",
+                  "pm.collectionVariables.set('vendorExternalId', 'postman-test-' + ts);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('message', () => pm.expect(res.message).to.eql('Vendor created successfully'));",
+                  "pm.test('data matches what was sent', () => {",
+                  "  pm.expect(res.data.id).to.be.a('number');",
+                  "  pm.expect(res.data.name).to.eql(pm.collectionVariables.get('vendorName'));",
+                  "  pm.expect(res.data.external_id).to.eql(pm.collectionVariables.get('vendorExternalId'));",
+                  "  pm.expect(res.data.created_at).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Creates a vendor with a unique name/external_id each run (generated in the pre-request script), so it can be re-run.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{vendorName}}\",\n  \"external_id\": \"{{vendorExternalId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendors"
+              ]
+            }
+          }
+        },
+        {
+          "name": "02 - Duplicate vendor (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('A vendor with this name or external_id already exists.'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Sends the same name/external_id as request 01 again. Run 01 first.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{vendorName}}\",\n  \"external_id\": \"{{vendorExternalId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendors"
+              ]
+            }
+          }
+        },
+        {
+          "name": "03 - Missing fields (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Invalid request. 'name' and 'external_id' are required.\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "name is empty and external_id is missing.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendors"
+              ]
+            }
+          }
+        },
+        {
+          "name": "04 - Malformed JSON (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Invalid request. 'name' and 'external_id' are required.\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "The body is not valid JSON.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendors"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Product Hierarchies",
+      "description": "POST /product-hierarchies scenarios 1-13 (internal/routes/product_hierarchy_routes.go). Run in order.",
+      "item": [
+        {
+          "name": "01 - Existing row resent (nothing changes)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false', () => pm.expect(res.shifted).to.eql(false));",
+                  "",
+                  "expectDept('300', 'unchanged', 3);",
+                  "expectDept('301', 'unchanged', 4);",
+                  "expectDept('30101', 'unchanged', 5);",
+                  "pm.test('no parent changes (300 keeps its parent, level 2 empty)', () => pm.expect(res.parents).to.eql([]));",
+                  "pm.test('category unchanged', () => pm.expect(res.category.action).to.eql('unchanged'));",
+                  "pm.test('storeLinksAdded is a number', () => pm.expect(res.storeLinksAdded).to.be.a('number'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "All 3 departments and category 19583 unchanged. First call may add missing store links; repeat calls add 0.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level1Name\": \"\",\n  \"level2Key\": \"\",\n  \"level2Name\": \"\",\n  \"level3Key\": \"300\",\n  \"level3Name\": \"DELI\",\n  \"level4Key\": \"301\",\n  \"level4Name\": \"DELI MEATS\",\n  \"level5Key\": \"30101\",\n  \"level5Name\": \"DELI TURKEY\",\n  \"level6Key\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "02 - Department name changes (UPDATE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false', () => pm.expect(res.shifted).to.eql(false));",
+                  "",
+                  "expectDept('30101', 'updated', 5);",
+                  "pm.test('before.name = DELI TURKEY', () => pm.expect(dept('30101').before.name).to.eql('DELI TURKEY'));",
+                  "pm.test('category updated: level_5_name', () => {",
+                  "  pm.expect(res.category.action).to.eql('updated');",
+                  "  pm.expect(res.category.changes.level_5_name).to.eql({ from: 'DELI TURKEY', to: 'DELI TURKEY BREAST' });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "30101 renamed to DELI TURKEY BREAST; category level_5_name updated.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level1Name\": \"\",\n  \"level2Key\": \"\",\n  \"level2Name\": \"\",\n  \"level3Key\": \"300\",\n  \"level3Name\": \"DELI\",\n  \"level4Key\": \"301\",\n  \"level4Name\": \"DELI MEATS\",\n  \"level5Key\": \"30101\",\n  \"level5Name\": \"DELI TURKEY BREAST\",\n  \"level6Key\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "03 - Change it back (undo Scenario 2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false', () => pm.expect(res.shifted).to.eql(false));",
+                  "",
+                  "expectDept('30101', 'updated', 5);",
+                  "pm.test('before.name = DELI TURKEY BREAST', () => pm.expect(dept('30101').before.name).to.eql('DELI TURKEY BREAST'));",
+                  "pm.test('category updated: level_5_name', () => {",
+                  "  pm.expect(res.category.action).to.eql('updated');",
+                  "  pm.expect(res.category.changes.level_5_name).to.eql({ from: 'DELI TURKEY BREAST', to: 'DELI TURKEY' });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Same body as Scenario 1. 30101 goes back to DELI TURKEY and the category is updated.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level1Name\": \"\",\n  \"level2Key\": \"\",\n  \"level2Name\": \"\",\n  \"level3Key\": \"300\",\n  \"level3Name\": \"DELI\",\n  \"level4Key\": \"301\",\n  \"level4Name\": \"DELI MEATS\",\n  \"level5Key\": \"30101\",\n  \"level5Name\": \"DELI TURKEY\",\n  \"level6Key\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "04 - New item under existing departments (partial INSERT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false', () => pm.expect(res.shifted).to.eql(false));",
+                  "",
+                  "expectDept('300', 'unchanged', 3);",
+                  "expectDept('301', 'unchanged', 4);",
+                  "expectDept('30199', 'inserted', 5);",
+                  "pm.test('parent: 30199 null -> 301', () => {",
+                  "  pm.expect(parentOf('30199')).to.exist;",
+                  "  pm.expect(parentOf('30199').from).to.eql(null);",
+                  "  pm.expect(parentOf('30199').to).to.eql(dept('301').id);",
+                  "});",
+                  "pm.test('category inserted', () => pm.expect(res.category.action).to.eql('inserted'));",
+                  "pm.test('storeLinksAdded >= 25', () => pm.expect(res.storeLinksAdded).to.be.at.least(25));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "30199 inserted at level 5 with parent 301; new category with department_id = 300. Only \"inserted\" on the first run (run the cleanup SQL to repeat).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level1Name\": \"\",\n  \"level2Key\": \"\",\n  \"level2Name\": \"\",\n  \"level3Key\": \"300\",\n  \"level3Name\": \"DELI\",\n  \"level4Key\": \"301\",\n  \"level4Name\": \"DELI MEATS\",\n  \"level5Key\": \"30199\",\n  \"level5Name\": \"DELI TEST ITEM\",\n  \"level6Key\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "05 - Brand-new branch (full INSERT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false', () => pm.expect(res.shifted).to.eql(false));",
+                  "",
+                  "expectDept('999', 'inserted', 3);",
+                  "expectDept('9991', 'inserted', 4);",
+                  "expectDept('99911', 'inserted', 5);",
+                  "pm.test('parents: 9991 -> 999, 99911 -> 9991', () => {",
+                  "  pm.expect(parentOf('9991').to).to.eql(dept('999').id);",
+                  "  pm.expect(parentOf('99911').to).to.eql(dept('9991').id);",
+                  "});",
+                  "pm.test('category inserted', () => pm.expect(res.category.action).to.eql('inserted'));",
+                  "pm.test('storeLinksAdded = 75', () => pm.expect(res.storeLinksAdded).to.eql(75));",
+                  "// Saved for Scenario 6 (99911 must move away from 9991).",
+                  "pm.collectionVariables.set('dept9991Id', dept('9991').id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "999, 9991, 99911 inserted; parents 9991->999, 99911->9991; 75 store links (3 x 25 stores).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level1Name\": \"\",\n  \"level2Key\": \"\",\n  \"level2Name\": \"\",\n  \"level3Key\": \"999\",\n  \"level3Name\": \"TEST DEPARTMENT\",\n  \"level4Key\": \"9991\",\n  \"level4Name\": \"TEST SUB ONE\",\n  \"level5Key\": \"99911\",\n  \"level5Name\": \"TEST ITEM\",\n  \"level6Key\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "06 - Item moves to a different parent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false', () => pm.expect(res.shifted).to.eql(false));",
+                  "",
+                  "expectDept('999', 'unchanged', 3);",
+                  "expectDept('9992', 'inserted', 4);",
+                  "expectDept('99911', 'unchanged', 5);",
+                  "pm.test('parent: 9992 -> 999', () => pm.expect(parentOf('9992').to).to.eql(dept('999').id));",
+                  "pm.test('parent: 99911 moves from 9991 to 9992', () => {",
+                  "  pm.expect(parentOf('99911')).to.exist;",
+                  "  const saved = pm.collectionVariables.get('dept9991Id');",
+                  "  if (saved) pm.expect(parentOf('99911').from).to.eql(Number(saved));",
+                  "  pm.expect(parentOf('99911').to).to.eql(dept('9992').id);",
+                  "});",
+                  "pm.test('category inserted', () => pm.expect(res.category.action).to.eql('inserted'));",
+                  "pm.test('storeLinksAdded = 25', () => pm.expect(res.storeLinksAdded).to.eql(25));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "9992 inserted; 99911 moves from 9991 to 9992; a new category is inserted (the Scenario 5 one is kept).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level1Name\": \"\",\n  \"level2Key\": \"\",\n  \"level2Name\": \"\",\n  \"level3Key\": \"999\",\n  \"level3Name\": \"TEST DEPARTMENT\",\n  \"level4Key\": \"9992\",\n  \"level4Name\": \"TEST SUB TWO\",\n  \"level5Key\": \"99911\",\n  \"level5Name\": \"TEST ITEM\",\n  \"level6Key\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "07 - Shift row, existing data (fixes BACON parent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = true', () => pm.expect(res.shifted).to.eql(true));",
+                  "",
+                  "pm.test('row is shifted', () => {",
+                  "  pm.expect(res.row.level2Key).to.eql('500');",
+                  "  pm.expect(res.row.level3Key).to.eql('503');",
+                  "  pm.expect(res.row.level4Key).to.eql('50301');",
+                  "  pm.expect(res.row.level5Key).to.eql('');",
+                  "  pm.expect(res.row.level6Key).to.eql('');",
+                  "});",
+                  "expectDept('500', 'unchanged', 2);",
+                  "expectDept('503', 'unchanged', 3);",
+                  "expectDept('50301', 'unchanged', 4);",
+                  "pm.test('if a parent changed, 50301 now points to 503', () => {",
+                  "  if (parentOf('50301')) pm.expect(parentOf('50301').to).to.eql(dept('503').id);",
+                  "});",
+                  "pm.test('category unchanged', () => pm.expect(res.category.action).to.eql('unchanged'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "level3Key 500 is a shift key. Row becomes \"\" | 500 | 503 | 50301 | \"\". 50301 parent fixed from itself to 503 (first run only).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level1Name\": \"\",\n  \"level2Key\": \"\",\n  \"level2Name\": \"\",\n  \"level3Key\": \"500\",\n  \"level3Name\": \"FROZEN FOODS\",\n  \"level4Key\": \"503\",\n  \"level4Name\": \"FROZEN BREAKFAST\",\n  \"level5Key\": \"50301\",\n  \"level5Name\": \"BACON\",\n  \"level6Key\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "08 - Shift row, new data",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = true', () => pm.expect(res.shifted).to.eql(true));",
+                  "",
+                  "expectDept('500', 'unchanged', 2);",
+                  "expectDept('599', 'inserted', 3);",
+                  "expectDept('59901', 'inserted', 4);",
+                  "pm.test('parents: 599 -> 500, 59901 -> 599', () => {",
+                  "  pm.expect(parentOf('599').to).to.eql(dept('500').id);",
+                  "  pm.expect(parentOf('59901').to).to.eql(dept('599').id);",
+                  "});",
+                  "pm.test('category inserted with keys (\"\",500,599,59901,\"\")', () => {",
+                  "  pm.expect(res.category.action).to.eql('inserted');",
+                  "  pm.expect([res.row.level1Key, res.row.level2Key, res.row.level3Key, res.row.level4Key, res.row.level5Key])",
+                  "    .to.eql(['', '500', '599', '59901', '']);",
+                  "});",
+                  "pm.test('storeLinksAdded = 50', () => pm.expect(res.storeLinksAdded).to.eql(50));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "500 unchanged (level 2); 599 (level 3) and 59901 (level 4) inserted; 50 store links.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level1Name\": \"\",\n  \"level2Key\": \"\",\n  \"level2Name\": \"\",\n  \"level3Key\": \"500\",\n  \"level3Name\": \"FROZEN FOODS\",\n  \"level4Key\": \"599\",\n  \"level4Name\": \"FROZEN TEST\",\n  \"level5Key\": \"59901\",\n  \"level5Name\": \"FROZEN TEST ITEM\",\n  \"level6Key\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "09 - Only level 3 sent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false', () => pm.expect(res.shifted).to.eql(false));",
+                  "",
+                  "expectDept('300', 'unchanged', 3);",
+                  "pm.test('only one department in this row', () => pm.expect(res.departments.length).to.eql(1));",
+                  "pm.test('missing fields became \"\"', () => {",
+                  "  pm.expect(res.row.level1Key).to.eql('');",
+                  "  pm.expect(res.row.level4Key).to.eql('');",
+                  "  pm.expect(res.row.level6Key).to.eql('');",
+                  "});",
+                  "pm.test('category inserted or unchanged', () => pm.expect(res.category.action).to.be.oneOf(['inserted', 'unchanged']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Missing fields are treated as \"\". Category (\"\",\"\",300,\"\",\"\") inserted the first time, unchanged after.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level3Key\": \"300\",\n  \"level3Name\": \"DELI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "10 - Keys sent as numbers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false', () => pm.expect(res.shifted).to.eql(false));",
+                  "",
+                  "pm.test('numbers became strings', () => {",
+                  "  pm.expect(res.row.level3Key).to.eql('300');",
+                  "  pm.expect(res.row.level4Key).to.eql('301');",
+                  "  pm.expect(res.row.level5Key).to.eql('30101');",
+                  "});",
+                  "expectDept('300', 'unchanged', 3);",
+                  "expectDept('301', 'unchanged', 4);",
+                  "expectDept('30101', 'unchanged', 5);",
+                  "pm.test('category unchanged', () => pm.expect(res.category.action).to.eql('unchanged'));",
+                  "pm.test('no new store links', () => pm.expect(res.storeLinksAdded).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Numbers are treated as text: identical to Scenario 1 (everything unchanged).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level3Key\": 300,\n  \"level3Name\": \"DELI\",\n  \"level4Key\": 301,\n  \"level4Name\": \"DELI MEATS\",\n  \"level5Key\": 30101,\n  \"level5Name\": \"DELI TURKEY\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "11 - Junk row (skipped)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('skipped with reason', () => pm.expect(res).to.eql({ status: 'skipped', reason: \"Row contains 'OLD-OLD', nothing saved\" }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "A value contains OLD-OLD, so nothing is written.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level1Name\": \"\",\n  \"level2Key\": \"\",\n  \"level2Name\": \"\",\n  \"level3Key\": \"300\",\n  \"level3Name\": \"DELI\",\n  \"level4Key\": \"301\",\n  \"level4Name\": \"OLD-OLD DELI MEATS\",\n  \"level5Key\": \"30101\",\n  \"level5Name\": \"DELI TURKEY\",\n  \"level6Key\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "12 - Level 3 missing (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('errors.level3Key', () => pm.expect(res.errors.level3Key).to.eql(['The level3 key field is required.']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "level3Key is empty, so validation fails.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level1Name\": \"\",\n  \"level2Key\": \"\",\n  \"level2Name\": \"\",\n  \"level3Key\": \"\",\n  \"level3Name\": \"DELI\",\n  \"level4Key\": \"301\",\n  \"level4Name\": \"DELI MEATS\",\n  \"level5Key\": \"30101\",\n  \"level5Name\": \"DELI TURKEY\",\n  \"level6Key\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "13 - Shift row with level 4 missing (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "// Find a department in the response by its external_id.",
+                  "const dept = (ext) => (res.departments || []).find(d => d.external_id === ext);",
+                  "// Find a parent change by department external_id.",
+                  "const parentOf = (ext) => (res.parents || []).find(p => dept(ext) && p.department_id === dept(ext).id);",
+                  "const expectDept = (ext, action, level) => pm.test(ext + ' is ' + action + (level ? ' at level ' + level : ''), () => {",
+                  "  pm.expect(dept(ext), 'department ' + ext + ' in response').to.exist;",
+                  "  pm.expect(dept(ext).action).to.eql(action);",
+                  "  if (level) pm.expect(dept(ext).level).to.eql(level);",
+                  "});",
+                  "",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('level4Key and level4Name are required when level3Key is one of the shift keys.'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "500 is a shift key but level 4 is empty, so there is no new level 3.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level1Name\": \"\",\n  \"level2Key\": \"\",\n  \"level2Name\": \"\",\n  \"level3Key\": \"500\",\n  \"level3Name\": \"FROZEN FOODS\",\n  \"level4Key\": \"\",\n  \"level4Name\": \"\",\n  \"level5Key\": \"\",\n  \"level5Name\": \"\",\n  \"level6Key\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-hierarchies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-hierarchies"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
