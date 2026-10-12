@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "feed-api",
-    "description": "All feed-api endpoints, one folder per route file (internal/routes/*_routes.go).\n\n1. Start the API: go run ./cmd\n2. Set the baseUrl collection variable if your server is not http://localhost:8080\n3. Run the whole collection with the Collection Runner (requests run in order; some depend on earlier ones).\n4. Afterwards, run docs/postman_cleanup.sql to remove the test rows.\n\nProduct Hierarchies scenarios 4, 5, 6 and 8 only show \"inserted\" on the first run; run the cleanup SQL before repeating them.",
+    "description": "All feed-api endpoints, one folder per route file (internal/routes/*_routes.go).\n\n1. Start the API: go run ./cmd\n2. Set the baseUrl collection variable if your server is not http://localhost:8080\n3. Run the whole collection with the Collection Runner (requests run in order; some depend on earlier ones).\n4. Test rows (vendors with external_id postman-test-*, product-hierarchy test departments) stay in the DB; delete them manually if needed.\n\nProduct Hierarchies scenarios 4, 5, 6 and 8 only show \"inserted\" on the first run.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -18,6 +18,10 @@
       "value": ""
     },
     {
+      "key": "vendorOldName",
+      "value": ""
+    },
+    {
       "key": "dept9991Id",
       "value": ""
     }
@@ -25,17 +29,17 @@
   "item": [
     {
       "name": "Vendors",
-      "description": "POST /vendors (internal/routes/vendor_routes.go). Run 01 before 02.",
+      "description": "POST /vendors (internal/routes/vendor_routes.go): upsert by external_id + store_vendors links. Run in order.",
       "item": [
         {
-          "name": "01 - Create vendor (201)",
+          "name": "01 - Create new vendor (201, inserted)",
           "event": [
             {
               "listen": "prerequest",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Unique values every run, so this request never hits 409. Saved for \"02 - Duplicate vendor\".",
+                  "// Unique values every run. Saved for the next vendor requests.",
                   "const ts = Date.now();",
                   "pm.collectionVariables.set('vendorName', 'Postman Test Vendor ' + ts);",
                   "pm.collectionVariables.set('vendorExternalId', 'postman-test-' + ts);"
@@ -50,19 +54,20 @@
                   "const res = pm.response.json();",
                   "pm.test('Status 201', () => pm.response.to.have.status(201));",
                   "pm.test('message', () => pm.expect(res.message).to.eql('Vendor created successfully'));",
-                  "pm.test('data matches what was sent', () => {",
-                  "  pm.expect(res.data.id).to.be.a('number');",
-                  "  pm.expect(res.data.name).to.eql(pm.collectionVariables.get('vendorName'));",
-                  "  pm.expect(res.data.external_id).to.eql(pm.collectionVariables.get('vendorExternalId'));",
-                  "  pm.expect(res.data.created_at).to.exist;",
-                  "});"
+                  "pm.test('action = inserted', () => pm.expect(res.data.action).to.eql('inserted'));",
+                  "pm.test('vendor matches what was sent', () => {",
+                  "  pm.expect(res.data.vendor.id).to.be.a('number');",
+                  "  pm.expect(res.data.vendor.name).to.eql(pm.collectionVariables.get('vendorName'));",
+                  "  pm.expect(res.data.vendor.external_id).to.eql(pm.collectionVariables.get('vendorExternalId'));",
+                  "});",
+                  "pm.test('linked to stores (one row per store)', () => pm.expect(res.data.storeLinksAdded).to.be.at.least(0));"
                 ]
               }
             }
           ],
           "request": {
             "method": "POST",
-            "description": "Creates a vendor with a unique name/external_id each run (generated in the pre-request script), so it can be re-run.",
+            "description": "New external_id => vendor INSERTED and linked to every store in store_vendors (picklist_creation = false). Unique values every run.",
             "header": [
               {
                 "key": "Content-Type",
@@ -94,7 +99,117 @@
           }
         },
         {
-          "name": "02 - Duplicate vendor (409)",
+          "name": "02 - Resend same vendor (200, unchanged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('action = unchanged', () => pm.expect(res.data.action).to.eql('unchanged'));",
+                  "pm.test('no new store links', () => pm.expect(res.data.storeLinksAdded).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Same external_id and name => nothing changes; all store links already exist, so 0 added.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{vendorName}}\",\n  \"external_id\": \"{{vendorExternalId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendors"
+              ]
+            }
+          }
+        },
+        {
+          "name": "03 - Rename vendor (200, updated)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('vendorOldName', pm.collectionVariables.get('vendorName'));",
+                  "pm.collectionVariables.set('vendorName', pm.collectionVariables.get('vendorName') + ' RENAMED');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('action = updated', () => pm.expect(res.data.action).to.eql('updated'));",
+                  "pm.test('before.name is the old name', () => pm.expect(res.data.before.name).to.eql(pm.collectionVariables.get('vendorOldName')));",
+                  "pm.test('name updated', () => pm.expect(res.data.vendor.name).to.eql(pm.collectionVariables.get('vendorName')));",
+                  "pm.test('no new store links', () => pm.expect(res.data.storeLinksAdded).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Same external_id, new name => only name is UPDATED. Existing store_vendors rows are not touched.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{vendorName}}\",\n  \"external_id\": \"{{vendorExternalId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendors"
+              ]
+            }
+          }
+        },
+        {
+          "name": "04 - Name taken by another vendor (409)",
           "event": [
             {
               "listen": "test",
@@ -103,14 +218,14 @@
                 "exec": [
                   "const res = pm.response.json();",
                   "pm.test('Status 409', () => pm.response.to.have.status(409));",
-                  "pm.test('error message', () => pm.expect(res.error).to.eql('A vendor with this name or external_id already exists.'));"
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('A vendor with this name already exists.'));"
                 ]
               }
             }
           ],
           "request": {
             "method": "POST",
-            "description": "Sends the same name/external_id as request 01 again. Run 01 first.",
+            "description": "New external_id but the name already belongs to the vendor from 01/03 (name is UNIQUE). Nothing is saved.",
             "header": [
               {
                 "key": "Content-Type",
@@ -123,7 +238,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"{{vendorName}}\",\n  \"external_id\": \"{{vendorExternalId}}\"\n}",
+              "raw": "{\n  \"name\": \"{{vendorName}}\",\n  \"external_id\": \"{{vendorExternalId}}-other\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -142,7 +257,7 @@
           }
         },
         {
-          "name": "03 - Missing fields (400)",
+          "name": "05 - Missing fields (400)",
           "event": [
             {
               "listen": "test",
@@ -190,7 +305,7 @@
           }
         },
         {
-          "name": "04 - Malformed JSON (400)",
+          "name": "06 - Malformed JSON (400)",
           "event": [
             {
               "listen": "test",
@@ -480,7 +595,7 @@
           ],
           "request": {
             "method": "POST",
-            "description": "30199 inserted at level 5 with parent 301; new category with department_id = 300. Only \"inserted\" on the first run (run the cleanup SQL to repeat).",
+            "description": "30199 inserted at level 5 with parent 301; new category with department_id = 300. Only \"inserted\" on the first run.",
             "header": [
               {
                 "key": "Content-Type",
