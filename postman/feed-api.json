@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "feed-api",
-    "description": "All feed-api endpoints, one folder per route file (internal/routes/*_routes.go).\n\n1. Start the API: go run ./cmd\n2. Set the baseUrl collection variable if your server is not http://localhost:8080\n3. Run the whole collection with the Collection Runner (requests run in order; some depend on earlier ones).\n4. Test rows (vendors with external_id postman-test-*, product-hierarchy test departments) stay in the DB; delete them manually if needed.\n\nProduct Hierarchies scenarios 4, 5, 6 and 8 only show \"inserted\" on the first run.",
+    "description": "All feed-api endpoints, one folder per route file (internal/routes/*_routes.go).\n\n1. Start the API: go run ./cmd\n2. Set the baseUrl collection variable if your server is not http://localhost:8080\n3. Run the whole collection with the Collection Runner (requests run in order; some depend on earlier ones).\n4. Test rows (vendors with external_id postman-test-*, product-hierarchy test departments) stay in the DB; delete them manually if needed.\n\nProduct Hierarchies scenarios 4, 5, 6 and 8 only show \"inserted\" on the first run.\n\nProducts: test rows (TEST-SKU-0001/0002, brand TESTBRANDAPI) are removed with the cleanup SQL in the Products folder description. S4 and S10 only show \"inserted\" when the test SKUs do not exist yet.\n\nProduct UPCs: test rows (upc 999000000001-4) are removed with the cleanup SQL in the Product UPCs folder description.\n\nBOH: run the cleanup SQL in the BOH folder description after testing; it restores the original store_products values.\n\nDeliveries: run the cleanup SQL in the Deliveries folder description after testing (test ASNs 990000001-3 and the activity logs).\n\nStocktake: run the cleanup SQL in the Stocktake folder description after testing; it restores the location quantities.\n\nProduct Variants: run DELETE FROM product_variant WHERE variant LIKE 'TEST-VAR-%'; after testing.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -23,6 +23,30 @@
     },
     {
       "key": "dept9991Id",
+      "value": ""
+    },
+    {
+      "key": "testBrandId",
+      "value": ""
+    },
+    {
+      "key": "bohB1Id",
+      "value": ""
+    },
+    {
+      "key": "deliveryD1Id",
+      "value": ""
+    },
+    {
+      "key": "deliveryUnitD1Id",
+      "value": ""
+    },
+    {
+      "key": "deliveryProductD1Id",
+      "value": ""
+    },
+    {
+      "key": "variantV3Id",
       "value": ""
     }
   ],
@@ -1224,6 +1248,4227 @@
               ],
               "path": [
                 "product-hierarchies"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "description": "POST /products scenarios S1-S12 (internal/routes/product_routes.go). Run in order.\n\nStatus rule: \"1\" = active (A), anything else = inactive (I).\nmoq is optional: missing or empty => 1 (written to store_products when BOS/FOS is added).\nS4 and S10 show \"inserted\" only when TEST-SKU-0001/0002 do not exist yet. Run this cleanup SQL after testing (and before re-running):\n\nBEGIN;\nDELETE FROM picklist_product_assignations WHERE picklist_product_id IN (SELECT id FROM picklist_products WHERE product_id IN (SELECT id FROM products WHERE sku IN ('TEST-SKU-0001','TEST-SKU-0002')));\nDELETE FROM picklist_products WHERE product_id IN (SELECT id FROM products WHERE sku IN ('TEST-SKU-0001','TEST-SKU-0002'));\nDELETE FROM product_location  WHERE product_id IN (SELECT id FROM products WHERE sku IN ('TEST-SKU-0001','TEST-SKU-0002'));\nDELETE FROM store_location    WHERE name IN (SELECT 'Virtual FoS - ' || id FROM products WHERE sku IN ('TEST-SKU-0001','TEST-SKU-0002'));\nDELETE FROM store_products    WHERE product_id IN (SELECT id FROM products WHERE sku IN ('TEST-SKU-0001','TEST-SKU-0002'));\nDELETE FROM products          WHERE sku IN ('TEST-SKU-0001','TEST-SKU-0002');\nDELETE FROM product_brands    WHERE external_id = 'TESTBRANDAPI';\nCOMMIT;",
+      "item": [
+        {
+          "name": "S1 - Existing active product, unchanged (first call adds BOS/FOS)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false, category 19583', () => {",
+                  "  pm.expect(res.shifted).to.eql(false);",
+                  "  pm.expect(res.levelsUsed).to.eql(['', '', '300', '301', '30101']);",
+                  "  pm.expect(res.categoryId).to.eql(19583);",
+                  "});",
+                  "pm.test('brand 1510 unchanged', () => pm.expect(res.brand).to.eql({ id: 1510, external_id: 'DELIMEATS', action: 'unchanged', before: null }));",
+                  "pm.test('product 785490 unchanged', () => {",
+                  "  pm.expect(res.product.id).to.eql(785490);",
+                  "  pm.expect(res.product.action).to.eql('unchanged');",
+                  "  pm.expect(res.product.changes).to.eql({});",
+                  "});",
+                  "pm.test('active: locations checked in every store', () => {",
+                  "  pm.expect(res.productStatus).to.eql('A');",
+                  "  pm.expect(res.inactiveCleanup).to.eql(null);",
+                  "  pm.expect(res.locations.storesChecked).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Cooked Sliced Turkey (id 785490). Brand 1510 and product unchanged. On a fresh DB the first call creates 15 Back Rooms, 15 BOS, 25 Virtual FoS locations (department 27) and 25 FOS rows; later calls add nothing.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level2Key\": \"\",\n  \"level3Key\": \"300\",\n  \"level4Key\": \"301\",\n  \"level5Key\": \"30101\",\n  \"level6Key\": \"\",\n  \"sku\": \"0020700500000\",\n  \"name\": \"Cooked Sliced Turkey (Deli)\",\n  \"brand\": \"DELI MEATS\",\n  \"status\": \"1\",\n  \"vendorKey\": \"SC11\",\n  \"uomBuy\": \"W\",\n  \"buyQty\": 1,\n  \"uomSell\": \"1\",\n  \"innerPack\": 1,\n  \"masterPack\": 0,\n  \"image\": \"\",\n  \"primaryUpc\": \"0020700500000\",\n  \"retailPrice\": 45.99,\n  \"unitLandedCost\": 18.19,\n  \"skuType\": \"\",\n  \"parentSku\": \"\",\n  \"qtyPerParent\": 0,\n  \"referenceSku\": \"\",\n  \"shelfDays\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S1b - Same request again (everything complete)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false, category 19583', () => {",
+                  "  pm.expect(res.shifted).to.eql(false);",
+                  "  pm.expect(res.levelsUsed).to.eql(['', '', '300', '301', '30101']);",
+                  "  pm.expect(res.categoryId).to.eql(19583);",
+                  "});",
+                  "pm.test('product unchanged', () => pm.expect(res.product.action).to.eql('unchanged'));",
+                  "pm.test('every store already complete, nothing added', () => {",
+                  "  const l = res.locations;",
+                  "  pm.expect(l.storesAlreadyComplete).to.eql(l.storesChecked);",
+                  "  pm.expect([l.backRoomsCreated, l.bosAdded, l.fosLocationsCreated, l.fosAdded]).to.eql([0, 0, 0, 0]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Second call of S1: all counts 0 and every store already complete.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level2Key\": \"\",\n  \"level3Key\": \"300\",\n  \"level4Key\": \"301\",\n  \"level5Key\": \"30101\",\n  \"level6Key\": \"\",\n  \"sku\": \"0020700500000\",\n  \"name\": \"Cooked Sliced Turkey (Deli)\",\n  \"brand\": \"DELI MEATS\",\n  \"status\": \"1\",\n  \"vendorKey\": \"SC11\",\n  \"uomBuy\": \"W\",\n  \"buyQty\": 1,\n  \"uomSell\": \"1\",\n  \"innerPack\": 1,\n  \"masterPack\": 0,\n  \"image\": \"\",\n  \"primaryUpc\": \"0020700500000\",\n  \"retailPrice\": 45.99,\n  \"unitLandedCost\": 18.19,\n  \"skuType\": \"\",\n  \"parentSku\": \"\",\n  \"qtyPerParent\": 0,\n  \"referenceSku\": \"\",\n  \"shelfDays\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S2 - Name and price change (UPDATE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false, category 19583', () => {",
+                  "  pm.expect(res.shifted).to.eql(false);",
+                  "  pm.expect(res.levelsUsed).to.eql(['', '', '300', '301', '30101']);",
+                  "  pm.expect(res.categoryId).to.eql(19583);",
+                  "});",
+                  "pm.test('product updated: name + retail_price', () => {",
+                  "  pm.expect(res.product.action).to.eql('updated');",
+                  "  pm.expect(res.product.changes).to.eql({",
+                  "    name: { from: 'Cooked Sliced Turkey (Deli)', to: 'Cooked Sliced Turkey (Deli) NEW' },",
+                  "    retail_price: { from: 45.99, to: 49.99 },",
+                  "  });",
+                  "});",
+                  "pm.test('every store already complete, nothing added', () => {",
+                  "  const l = res.locations;",
+                  "  pm.expect(l.storesAlreadyComplete).to.eql(l.storesChecked);",
+                  "  pm.expect([l.backRoomsCreated, l.bosAdded, l.fosLocationsCreated, l.fosAdded]).to.eql([0, 0, 0, 0]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "name and retail_price change. Existing product_location rows keep 45.99 (they are never updated).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level2Key\": \"\",\n  \"level3Key\": \"300\",\n  \"level4Key\": \"301\",\n  \"level5Key\": \"30101\",\n  \"level6Key\": \"\",\n  \"sku\": \"0020700500000\",\n  \"name\": \"Cooked Sliced Turkey (Deli) NEW\",\n  \"brand\": \"DELI MEATS\",\n  \"status\": \"1\",\n  \"vendorKey\": \"SC11\",\n  \"uomBuy\": \"W\",\n  \"buyQty\": 1,\n  \"uomSell\": \"1\",\n  \"innerPack\": 1,\n  \"masterPack\": 0,\n  \"image\": \"\",\n  \"primaryUpc\": \"0020700500000\",\n  \"retailPrice\": 49.99,\n  \"unitLandedCost\": 18.19,\n  \"skuType\": \"\",\n  \"parentSku\": \"\",\n  \"qtyPerParent\": 0,\n  \"referenceSku\": \"\",\n  \"shelfDays\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S3 - Revert S2 (same body as S1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false, category 19583', () => {",
+                  "  pm.expect(res.shifted).to.eql(false);",
+                  "  pm.expect(res.levelsUsed).to.eql(['', '', '300', '301', '30101']);",
+                  "  pm.expect(res.categoryId).to.eql(19583);",
+                  "});",
+                  "pm.test('product updated back', () => {",
+                  "  pm.expect(res.product.action).to.eql('updated');",
+                  "  pm.expect(res.product.changes).to.eql({",
+                  "    name: { from: 'Cooked Sliced Turkey (Deli) NEW', to: 'Cooked Sliced Turkey (Deli)' },",
+                  "    retail_price: { from: 49.99, to: 45.99 },",
+                  "  });",
+                  "});",
+                  "pm.test('every store already complete, nothing added', () => {",
+                  "  const l = res.locations;",
+                  "  pm.expect(l.storesAlreadyComplete).to.eql(l.storesChecked);",
+                  "  pm.expect([l.backRoomsCreated, l.bosAdded, l.fosLocationsCreated, l.fosAdded]).to.eql([0, 0, 0, 0]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Product goes back to the original name and 45.99.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level2Key\": \"\",\n  \"level3Key\": \"300\",\n  \"level4Key\": \"301\",\n  \"level5Key\": \"30101\",\n  \"level6Key\": \"\",\n  \"sku\": \"0020700500000\",\n  \"name\": \"Cooked Sliced Turkey (Deli)\",\n  \"brand\": \"DELI MEATS\",\n  \"status\": \"1\",\n  \"vendorKey\": \"SC11\",\n  \"uomBuy\": \"W\",\n  \"buyQty\": 1,\n  \"uomSell\": \"1\",\n  \"innerPack\": 1,\n  \"masterPack\": 0,\n  \"image\": \"\",\n  \"primaryUpc\": \"0020700500000\",\n  \"retailPrice\": 45.99,\n  \"unitLandedCost\": 18.19,\n  \"skuType\": \"\",\n  \"parentSku\": \"\",\n  \"qtyPerParent\": 0,\n  \"referenceSku\": \"\",\n  \"shelfDays\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S4 - New product with a new brand (INSERT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false, category 19583', () => {",
+                  "  pm.expect(res.shifted).to.eql(false);",
+                  "  pm.expect(res.levelsUsed).to.eql(['', '', '300', '301', '30101']);",
+                  "  pm.expect(res.categoryId).to.eql(19583);",
+                  "});",
+                  "pm.test('brand TESTBRANDAPI inserted', () => {",
+                  "  pm.expect(res.brand.external_id).to.eql('TESTBRANDAPI');",
+                  "  pm.expect(res.brand.action).to.eql('inserted');",
+                  "});",
+                  "pm.test('product inserted', () => {",
+                  "  pm.expect(res.product.sku).to.eql('TEST-SKU-0001');",
+                  "  pm.expect(res.product.action).to.eql('inserted');",
+                  "});",
+                  "pm.test('BOS + FOS added in every store', () => {",
+                  "  const l = res.locations;",
+                  "  pm.expect(l.storesAlreadyComplete).to.eql(0);",
+                  "  pm.expect(l.bosAdded).to.eql(l.storesChecked);",
+                  "  pm.expect(l.fosLocationsCreated).to.eql(l.storesChecked);",
+                  "  pm.expect(l.fosAdded).to.eql(l.storesChecked);",
+                  "});",
+                  "// Saved for S6 (brand_id is set again).",
+                  "pm.collectionVariables.set('testBrandId', res.brand.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "TESTBRANDAPI and TEST-SKU-0001 inserted; BOS + Virtual FoS + FOS in every store. Sends moq 2, so the 25 new store_products rows get moq = 2. \"inserted\" only on a clean DB (run the cleanup SQL first).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level2Key\": \"\",\n  \"level3Key\": \"300\",\n  \"level4Key\": \"301\",\n  \"level5Key\": \"30101\",\n  \"level6Key\": \"\",\n  \"sku\": \"TEST-SKU-0001\",\n  \"name\": \"API Test Turkey\",\n  \"brand\": \"Test Brand Api\",\n  \"status\": \"1\",\n  \"vendorKey\": \"SC11\",\n  \"uomBuy\": \"W\",\n  \"buyQty\": 1,\n  \"uomSell\": \"1\",\n  \"innerPack\": 1,\n  \"masterPack\": 0,\n  \"image\": \"\",\n  \"primaryUpc\": \"TEST-UPC-0001\",\n  \"retailPrice\": 10.5,\n  \"unitLandedCost\": 5.25,\n  \"skuType\": \"\",\n  \"parentSku\": \"\",\n  \"qtyPerParent\": 0,\n  \"referenceSku\": \"\",\n  \"shelfDays\": 0,\n  \"moq\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S5 - Brand removed (brand_id NULL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false, category 19583', () => {",
+                  "  pm.expect(res.shifted).to.eql(false);",
+                  "  pm.expect(res.levelsUsed).to.eql(['', '', '300', '301', '30101']);",
+                  "  pm.expect(res.categoryId).to.eql(19583);",
+                  "});",
+                  "pm.test('brand = null', () => pm.expect(res.brand).to.eql(null));",
+                  "pm.test('product updated: brand -> \"\", brand_id -> null', () => {",
+                  "  pm.expect(res.product.action).to.eql('updated');",
+                  "  pm.expect(res.product.changes.brand).to.eql({ from: 'Test Brand Api', to: '' });",
+                  "  pm.expect(res.product.changes.brand_id.to).to.eql(null);",
+                  "});",
+                  "pm.test('every store already complete, nothing added', () => {",
+                  "  const l = res.locations;",
+                  "  pm.expect(l.storesAlreadyComplete).to.eql(l.storesChecked);",
+                  "  pm.expect([l.backRoomsCreated, l.bosAdded, l.fosLocationsCreated, l.fosAdded]).to.eql([0, 0, 0, 0]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "brand \"\" => no brand row written, product brand_id set to NULL. The brand row itself is not deleted.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level2Key\": \"\",\n  \"level3Key\": \"300\",\n  \"level4Key\": \"301\",\n  \"level5Key\": \"30101\",\n  \"level6Key\": \"\",\n  \"sku\": \"TEST-SKU-0001\",\n  \"name\": \"API Test Turkey\",\n  \"brand\": \"\",\n  \"status\": \"1\",\n  \"vendorKey\": \"SC11\",\n  \"uomBuy\": \"W\",\n  \"buyQty\": 1,\n  \"uomSell\": \"1\",\n  \"innerPack\": 1,\n  \"masterPack\": 0,\n  \"image\": \"\",\n  \"primaryUpc\": \"TEST-UPC-0001\",\n  \"retailPrice\": 10.5,\n  \"unitLandedCost\": 5.25,\n  \"skuType\": \"\",\n  \"parentSku\": \"\",\n  \"qtyPerParent\": 0,\n  \"referenceSku\": \"\",\n  \"shelfDays\": 0,\n  \"moq\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S6 - Deactivate (status \"0\" -> I)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false, category 19583', () => {",
+                  "  pm.expect(res.shifted).to.eql(false);",
+                  "  pm.expect(res.levelsUsed).to.eql(['', '', '300', '301', '30101']);",
+                  "  pm.expect(res.categoryId).to.eql(19583);",
+                  "});",
+                  "pm.test('brand unchanged', () => pm.expect(res.brand.action).to.eql('unchanged'));",
+                  "pm.test('product updated: status A -> I, brand_id set', () => {",
+                  "  pm.expect(res.product.changes.status).to.eql({ from: 'A', to: 'I' });",
+                  "  pm.expect(res.product.changes.brand_id.from).to.eql(null);",
+                  "  pm.expect(res.product.changes.brand_id.to).to.eql(Number(pm.collectionVariables.get('testBrandId')));",
+                  "});",
+                  "pm.test('productStatus = I, locations = null', () => {",
+                  "  pm.expect(res.productStatus).to.eql('I');",
+                  "  pm.expect(res.locations).to.eql(null);",
+                  "});",
+                  "pm.test('inactiveCleanup: FOS removal disabled, nothing removed', () => pm.expect(res.inactiveCleanup).to.eql({",
+                  "  fosRemovalEnabled: false, fosProductLocationsRemoved: 0, emptyFosLocationsRemoved: 0, picklistProductsRemoved: 0",
+                  "}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Status A -> I and brand_id set again. Picklist cleanup runs; all BOS/FOS rows and store_products stay.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level2Key\": \"\",\n  \"level3Key\": \"300\",\n  \"level4Key\": \"301\",\n  \"level5Key\": \"30101\",\n  \"level6Key\": \"\",\n  \"sku\": \"TEST-SKU-0001\",\n  \"name\": \"API Test Turkey\",\n  \"brand\": \"Test Brand Api\",\n  \"status\": \"0\",\n  \"vendorKey\": \"SC11\",\n  \"uomBuy\": \"W\",\n  \"buyQty\": 1,\n  \"uomSell\": \"1\",\n  \"innerPack\": 1,\n  \"masterPack\": 0,\n  \"image\": \"\",\n  \"primaryUpc\": \"TEST-UPC-0001\",\n  \"retailPrice\": 10.5,\n  \"unitLandedCost\": 5.25,\n  \"skuType\": \"\",\n  \"parentSku\": \"\",\n  \"qtyPerParent\": 0,\n  \"referenceSku\": \"\",\n  \"shelfDays\": 0,\n  \"moq\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S7 - Reactivate (status \"1\" -> A, same body as S4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false, category 19583', () => {",
+                  "  pm.expect(res.shifted).to.eql(false);",
+                  "  pm.expect(res.levelsUsed).to.eql(['', '', '300', '301', '30101']);",
+                  "  pm.expect(res.categoryId).to.eql(19583);",
+                  "});",
+                  "pm.test('product updated: status I -> A only', () => pm.expect(res.product.changes).to.eql({ status: { from: 'I', to: 'A' } }));",
+                  "pm.test('every store already complete, nothing added', () => {",
+                  "  const l = res.locations;",
+                  "  pm.expect(l.storesAlreadyComplete).to.eql(l.storesChecked);",
+                  "  pm.expect([l.backRoomsCreated, l.bosAdded, l.fosLocationsCreated, l.fosAdded]).to.eql([0, 0, 0, 0]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Status I -> A. FOS was never removed, so every store is already complete.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level2Key\": \"\",\n  \"level3Key\": \"300\",\n  \"level4Key\": \"301\",\n  \"level5Key\": \"30101\",\n  \"level6Key\": \"\",\n  \"sku\": \"TEST-SKU-0001\",\n  \"name\": \"API Test Turkey\",\n  \"brand\": \"Test Brand Api\",\n  \"status\": \"1\",\n  \"vendorKey\": \"SC11\",\n  \"uomBuy\": \"W\",\n  \"buyQty\": 1,\n  \"uomSell\": \"1\",\n  \"innerPack\": 1,\n  \"masterPack\": 0,\n  \"image\": \"\",\n  \"primaryUpc\": \"TEST-UPC-0001\",\n  \"retailPrice\": 10.5,\n  \"unitLandedCost\": 5.25,\n  \"skuType\": \"\",\n  \"parentSku\": \"\",\n  \"qtyPerParent\": 0,\n  \"referenceSku\": \"\",\n  \"shelfDays\": 0,\n  \"moq\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S8 - Shifted row (L3 = 500), status sent as number 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = true, category 2940', () => {",
+                  "  pm.expect(res.shifted).to.eql(true);",
+                  "  pm.expect(res.levelsUsed).to.eql(['', '500', '503', '50305', '']);",
+                  "  pm.expect(res.categoryId).to.eql(2940);",
+                  "});",
+                  "pm.test('brand 4189 unchanged', () => pm.expect(res.brand).to.eql({ id: 4189, external_id: 'OREIDA', action: 'unchanged', before: null }));",
+                  "pm.test('product 131476 unchanged, active', () => {",
+                  "  pm.expect(res.product.id).to.eql(131476);",
+                  "  pm.expect(res.product.action).to.eql('unchanged');",
+                  "  pm.expect(res.productStatus).to.eql('A');",
+                  "});",
+                  "pm.test('no new Back Rooms (S1 created them)', () => pm.expect(res.locations.backRoomsCreated).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Keys become \"\" | 500 | 503 | 50305 | \"\" => category 2940. On a fresh DB: bosAdded 24, 25 Virtual FoS (department 62), fosAdded 25.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level2Key\": \"\",\n  \"level3Key\": \"500\",\n  \"level4Key\": \"503\",\n  \"level5Key\": \"50305\",\n  \"level6Key\": \"\",\n  \"sku\": \"0001312000833\",\n  \"name\": \"Ore Ida Hash Brown Shredded 30oz\",\n  \"brand\": \"ORE IDA\",\n  \"status\": 1,\n  \"vendorKey\": \"998\",\n  \"uomBuy\": \"CU\",\n  \"buyQty\": 12,\n  \"uomSell\": \"1\",\n  \"innerPack\": 1,\n  \"masterPack\": 0,\n  \"image\": \"\",\n  \"primaryUpc\": \"0001312000833\",\n  \"retailPrice\": 14.49,\n  \"unitLandedCost\": 8.0058,\n  \"skuType\": \"\",\n  \"parentSku\": \"\",\n  \"qtyPerParent\": 0,\n  \"referenceSku\": \"\",\n  \"shelfDays\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S9 - Not shifted (L2 = 500, L3 = 501), inactive",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false, category 306712', () => {",
+                  "  pm.expect(res.shifted).to.eql(false);",
+                  "  pm.expect(res.levelsUsed).to.eql(['', '500', '501', '50102', '50102']);",
+                  "  pm.expect(res.categoryId).to.eql(306712);",
+                  "});",
+                  "pm.test('brand 6088 unchanged', () => pm.expect(res.brand).to.eql({ id: 6088, external_id: 'WALLS', action: 'unchanged', before: null }));",
+                  "pm.test('product 129119 unchanged', () => {",
+                  "  pm.expect(res.product.id).to.eql(129119);",
+                  "  pm.expect(res.product.action).to.eql('unchanged');",
+                  "});",
+                  "pm.test('productStatus = I, locations = null', () => {",
+                  "  pm.expect(res.productStatus).to.eql('I');",
+                  "  pm.expect(res.locations).to.eql(null);",
+                  "});",
+                  "pm.test('inactiveCleanup: FOS removal disabled, nothing removed', () => pm.expect(res.inactiveCleanup).to.eql({",
+                  "  fosRemovalEnabled: false, fosProductLocationsRemoved: 0, emptyFosLocationsRemoved: 0, picklistProductsRemoved: 0",
+                  "}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Only level3Key is checked, so no shift. Brand WALL`S => key WALLS (6088) unchanged. Its BOS rows are kept.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level1Key\": \"\",\n  \"level2Key\": \"500\",\n  \"level3Key\": \"501\",\n  \"level4Key\": \"50102\",\n  \"level5Key\": \"50102\",\n  \"level6Key\": \"\",\n  \"sku\": \"0000008011135\",\n  \"name\": \"Wall's Magnum Mint 100 ml\",\n  \"brand\": \"WALL`S\",\n  \"status\": \"0\",\n  \"vendorKey\": \"BI08\",\n  \"uomBuy\": \"CU\",\n  \"buyQty\": 20,\n  \"uomSell\": \"1\",\n  \"innerPack\": 20,\n  \"masterPack\": 0,\n  \"image\": \"\",\n  \"primaryUpc\": \"0000008011135\",\n  \"retailPrice\": 7.49,\n  \"unitLandedCost\": 4.564,\n  \"skuType\": \"\",\n  \"parentSku\": \"\",\n  \"qtyPerParent\": 0,\n  \"referenceSku\": \"\",\n  \"shelfDays\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S10 - Defaults (status missing, innerPack 0, empty numbers)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('shifted = false, category 19583', () => {",
+                  "  pm.expect(res.shifted).to.eql(false);",
+                  "  pm.expect(res.levelsUsed).to.eql(['', '', '300', '301', '30101']);",
+                  "  pm.expect(res.categoryId).to.eql(19583);",
+                  "});",
+                  "pm.test('product inserted', () => {",
+                  "  pm.expect(res.product.sku).to.eql('TEST-SKU-0002');",
+                  "  pm.expect(res.product.action).to.eql('inserted');",
+                  "});",
+                  "pm.test('productStatus = I, locations = null', () => {",
+                  "  pm.expect(res.productStatus).to.eql('I');",
+                  "  pm.expect(res.locations).to.eql(null);",
+                  "});",
+                  "pm.test('inactiveCleanup: FOS removal disabled, nothing removed', () => pm.expect(res.inactiveCleanup).to.eql({",
+                  "  fosRemovalEnabled: false, fosProductLocationsRemoved: 0, emptyFosLocationsRemoved: 0, picklistProductsRemoved: 0",
+                  "}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Inserted with status I, inner_pack 1, every number 0 and every missing text \"\". No locations are created. Check the row in the DB.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level3Key\": \"300\",\n  \"level4Key\": \"301\",\n  \"level5Key\": \"30101\",\n  \"sku\": \"TEST-SKU-0002\",\n  \"name\": \"API Defaults Test\",\n  \"brand\": \"Test Brand Api\",\n  \"innerPack\": 0,\n  \"buyQty\": \"\",\n  \"retailPrice\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S11 - Category not found (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('Category not found for these level keys. Send the product hierarchy first.'));",
+                  "pm.test('levelsUsed', () => pm.expect(res.levelsUsed).to.eql(['', '', '999', '9991', '99999']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Keys (\"\", \"\", 999, 9991, 99999) have no category. Nothing is saved.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level3Key\": \"999\",\n  \"level4Key\": \"9991\",\n  \"level5Key\": \"99999\",\n  \"sku\": \"TEST-SKU-0003\",\n  \"name\": \"No Category\",\n  \"status\": \"1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "S12 - Validation errors (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('errors.sku', () => pm.expect(res.errors.sku).to.eql(['The sku field is required.']));",
+                  "pm.test('errors.status', () => pm.expect(res.errors.status).to.eql(['The selected status is invalid.']));",
+                  "pm.test('errors.retailPrice', () => pm.expect(res.errors.retailPrice).to.eql(['The retail price field must be a number.']));",
+                  "pm.test('errors.moq', () => pm.expect(res.errors.moq).to.eql(['The moq field must be a number.']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "sku empty, status not 0/1, retailPrice and moq not numbers. Nothing is saved.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level3Key\": \"300\",\n  \"level4Key\": \"301\",\n  \"level5Key\": \"30101\",\n  \"sku\": \"\",\n  \"status\": \"A\",\n  \"retailPrice\": \"abc\",\n  \"moq\": \"abc\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Product UPCs",
+      "description": "POST /product-upcs scenarios U1-U11 (internal/routes/product_upc_routes.go). Run in order.\n\nSend upc and sku as JSON strings: numbers lose leading zeros (U9).\nSKU length rule (8..12 characters) is enabled, same as the CLI; U6 shows the 422.\nU2, U3 and U5 show \"inserted\" only before cleanup. Run this after testing (U1's row 023456789012 is real data and stays):\n\nDELETE FROM product_upcs WHERE upc IN ('999000000001','999000000002','999000000003','999000000004','0020700500000');",
+      "item": [
+        {
+          "name": "U1 - Existing UPC, same product (unchanged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('upc / sku echoed', () => pm.expect([res.upc, res.sku]).to.eql(['023456789012', '023456789012']));",
+                  "pm.test('productId = 23827975', () => pm.expect(res.productId).to.eql(23827975));",
+                  "pm.test('action = unchanged', () => pm.expect(res.action).to.eql('unchanged'));",
+                  "pm.test('upcId is a number', () => pm.expect(res.upcId).to.be.a('number'));",
+                  "pm.test('before = null', () => pm.expect(res.before).to.eql(null));",
+                  "pm.test('upcId = 1', () => pm.expect(res.upcId).to.eql(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Real row id 1 (Pepsi Regular 355ml). Nothing changes.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upc\": \"023456789012\",\n  \"sku\": \"023456789012\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-upcs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-upcs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "U2 - New UPC for an existing product (INSERT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('upc / sku echoed', () => pm.expect([res.upc, res.sku]).to.eql(['999000000001', '078933354']));",
+                  "pm.test('productId = 145726', () => pm.expect(res.productId).to.eql(145726));",
+                  "pm.test('action = inserted', () => pm.expect(res.action).to.eql('inserted'));",
+                  "pm.test('upcId is a number', () => pm.expect(res.upcId).to.be.a('number'));",
+                  "pm.test('before = null', () => pm.expect(res.before).to.eql(null));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Dove Roll On (id 145726, 9-character SKU) gets UPC 999000000001. \"inserted\" only before cleanup.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upc\": \"999000000001\",\n  \"sku\": \"078933354\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-upcs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-upcs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "U3 - Second UPC for the same product (INSERT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('upc / sku echoed', () => pm.expect([res.upc, res.sku]).to.eql(['999000000002', '078933354']));",
+                  "pm.test('productId = 145726', () => pm.expect(res.productId).to.eql(145726));",
+                  "pm.test('action = inserted', () => pm.expect(res.action).to.eql('inserted'));",
+                  "pm.test('upcId is a number', () => pm.expect(res.upcId).to.be.a('number'));",
+                  "pm.test('before = null', () => pm.expect(res.before).to.eql(null));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Product 145726 now has 2 UPCs.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upc\": \"999000000002\",\n  \"sku\": \"078933354\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-upcs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-upcs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "U4 - Move a UPC to another product (UPDATE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('upc / sku echoed', () => pm.expect([res.upc, res.sku]).to.eql(['999000000002', '1250563665']));",
+                  "pm.test('productId = 805177', () => pm.expect(res.productId).to.eql(805177));",
+                  "pm.test('action = updated', () => pm.expect(res.action).to.eql('updated'));",
+                  "pm.test('upcId is a number', () => pm.expect(res.upcId).to.be.a('number'));",
+                  "pm.test('before = old product', () => pm.expect(res.before).to.eql({ productId: 145726, sku: '078933354' }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "UPC 999000000002 moves from 145726 to 805177 (10-character SKU). 145726 keeps only 999000000001.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upc\": \"999000000002\",\n  \"sku\": \"1250563665\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-upcs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-upcs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "U5 - Inactive product still gets a UPC (INSERT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('upc / sku echoed', () => pm.expect([res.upc, res.sku]).to.eql(['999000000003', '61079521002']));",
+                  "pm.test('productId = 152981', () => pm.expect(res.productId).to.eql(152981));",
+                  "pm.test('action = inserted', () => pm.expect(res.action).to.eql('inserted'));",
+                  "pm.test('upcId is a number', () => pm.expect(res.upcId).to.be.a('number'));",
+                  "pm.test('before = null', () => pm.expect(res.before).to.eql(null));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Serge Milk (id 152981) has status I. Status is not checked.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upc\": \"999000000003\",\n  \"sku\": \"61079521002\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-upcs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-upcs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "U6 - 13-character SKU (422 while the length rule is enabled)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('SKU must be 8 to 12 characters (got 13).'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "With the SKU length rule enabled (default): 422. With the rule disabled (comment out STEP 3 in product_upc_handler.go): 200 inserted, productId 785490, and this test fails.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upc\": \"0020700500000\",\n  \"sku\": \"0020700500000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-upcs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-upcs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "U7 - SKU too short (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('SKU must be 8 to 12 characters (got 7).'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "7 characters: below the 8..12 rule.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upc\": \"999000000004\",\n  \"sku\": \"1234567\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-upcs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-upcs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "U8 - Product not found (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('Product not found for this SKU. Send the product feed first.'));",
+                  "pm.test('sku echoed', () => pm.expect(res.sku).to.eql('99999999'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "No product has this SKU. Nothing is saved.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upc\": \"999000000004\",\n  \"sku\": \"99999999\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-upcs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-upcs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "U9 - Numbers instead of strings (422, leading zero lost)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('Product not found for this SKU. Send the product feed first.'));",
+                  "pm.test('sku echoed', () => pm.expect(res.sku).to.eql('78933354'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "78933354 is not 078933354, so the product is not found. Always send upc and sku as strings.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upc\": 999000000001,\n  \"sku\": 78933354\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-upcs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-upcs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "U10 - Missing fields (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('errors.upc', () => pm.expect(res.errors.upc).to.eql(['The upc field is required.']));",
+                  "pm.test('errors.sku', () => pm.expect(res.errors.sku).to.eql(['The sku field is required.']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Both fields are required.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upc\": \"\",\n  \"sku\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-upcs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-upcs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "U11 - Repeat U4 (unchanged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('upc / sku echoed', () => pm.expect([res.upc, res.sku]).to.eql(['999000000002', '1250563665']));",
+                  "pm.test('productId = 805177', () => pm.expect(res.productId).to.eql(805177));",
+                  "pm.test('action = unchanged', () => pm.expect(res.action).to.eql('unchanged'));",
+                  "pm.test('upcId is a number', () => pm.expect(res.upcId).to.be.a('number'));",
+                  "pm.test('before = null', () => pm.expect(res.before).to.eql(null));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "The UPC already belongs to 805177.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"upc\": \"999000000002\",\n  \"sku\": \"1250563665\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-upcs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-upcs"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BOH",
+      "description": "POST /boh scenarios B1-B12 (internal/routes/boh_routes.go). Run in order.\n\nstoreId is stores.external_id (not stores.id). POS mode is disabled, so appMode is always \"default\".\nB1, B6 and B8 show \"inserted\" only before cleanup. This cleanup restores the values from before the tests:\n\nBEGIN;\nDELETE FROM boh WHERE date = '2026-10-14' AND (store_id, product_id) IN ((112, 129185), (333502389, 785490), (101, 132510));\nUPDATE store_products SET total_qty = 11 WHERE store_id = 112       AND product_id = 129185;\nUPDATE store_products SET total_qty = 0  WHERE store_id = 333502389 AND product_id = 785490;\nDELETE FROM store_products WHERE store_id = 101 AND product_id = 132510;\nCOMMIT;",
+      "item": [
+        {
+          "name": "B1 - New count for a product that has stock (INSERT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, default mode', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.appMode).to.eql('default');",
+                  "  pm.expect(res.activityLog).to.eql('not POS mode');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112,\"name\":\"WARRENS\"}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129185,\"sku\":\"0004145811704\"}));",
+                  "pm.test('date + qty', () => pm.expect([res.date, res.qtyReceived, res.qtyStored]).to.eql(['2026-10-14', '58', 58]));",
+                  "pm.test('storeQty = 60', () => pm.expect(res.storeQty).to.eql(60));",
+                  "pm.test('boh inserted', () => {",
+                  "  pm.expect(res.boh.action).to.eql('inserted');",
+                  "  pm.expect(res.boh.before).to.eql(null);",
+                  "  pm.expect(res.boh.id).to.be.a('number');",
+                  "});",
+                  "pm.test('storeProduct updated (before 11)', () => pm.expect(res.storeProduct).to.eql({ action: 'updated', before: 11 }));",
+                  "pm.collectionVariables.set('bohB1Id', res.boh.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Edwards Hershey's Choco Cream Pie, store WARRENS. boh inserted with storeQty 60 (Back Room 60 + FOS 0); store_products 11 -> 58. \"inserted\" only before cleanup.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"112\",\n  \"sku\": \"0004145811704\",\n  \"qty\": \"58\",\n  \"date\": \"2026-10-14\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B2 - Same day, new count with a decimal (UPDATE, rounded up)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, default mode', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.appMode).to.eql('default');",
+                  "  pm.expect(res.activityLog).to.eql('not POS mode');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112,\"name\":\"WARRENS\"}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129185,\"sku\":\"0004145811704\"}));",
+                  "pm.test('date + qty', () => pm.expect([res.date, res.qtyReceived, res.qtyStored]).to.eql(['2026-10-14', '56.2', 57]));",
+                  "pm.test('boh updated', () => {",
+                  "  pm.expect(res.boh.action).to.eql('updated');",
+                  "  pm.expect(res.boh.before).to.eql({\"qty\":58});",
+                  "  pm.expect(res.boh.id).to.be.a('number');",
+                  "});",
+                  "pm.test('storeProduct updated (before 58)', () => pm.expect(res.storeProduct).to.eql({ action: 'updated', before: 58 }));",
+                  "pm.test('same boh row as B1', () => pm.expect(res.boh.id).to.eql(Number(pm.collectionVariables.get('bohB1Id'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "56.2 rounds up to 57. Only boh.qty changes; store_qty and created_at keep their first values.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"112\",\n  \"sku\": \"0004145811704\",\n  \"qty\": \"56.2\",\n  \"date\": \"2026-10-14\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B3 - Repeat B2 (unchanged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, default mode', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.appMode).to.eql('default');",
+                  "  pm.expect(res.activityLog).to.eql('not POS mode');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112,\"name\":\"WARRENS\"}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129185,\"sku\":\"0004145811704\"}));",
+                  "pm.test('date + qty', () => pm.expect([res.date, res.qtyReceived, res.qtyStored]).to.eql(['2026-10-14', '56.2', 57]));",
+                  "pm.test('boh unchanged', () => {",
+                  "  pm.expect(res.boh.action).to.eql('unchanged');",
+                  "  pm.expect(res.boh.before).to.eql(null);",
+                  "  pm.expect(res.boh.id).to.be.a('number');",
+                  "});",
+                  "pm.test('storeProduct unchanged (before 57)', () => pm.expect(res.storeProduct).to.eql({ action: 'unchanged', before: 57 }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Nothing changes.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"112\",\n  \"sku\": \"0004145811704\",\n  \"qty\": \"56.2\",\n  \"date\": \"2026-10-14\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B4 - Negative count (stored as 0)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, default mode', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.appMode).to.eql('default');",
+                  "  pm.expect(res.activityLog).to.eql('not POS mode');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112,\"name\":\"WARRENS\"}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129185,\"sku\":\"0004145811704\"}));",
+                  "pm.test('date + qty', () => pm.expect([res.date, res.qtyReceived, res.qtyStored]).to.eql(['2026-10-14', '-5', 0]));",
+                  "pm.test('boh updated', () => {",
+                  "  pm.expect(res.boh.action).to.eql('updated');",
+                  "  pm.expect(res.boh.before).to.eql({\"qty\":57});",
+                  "  pm.expect(res.boh.id).to.be.a('number');",
+                  "});",
+                  "pm.test('storeProduct updated (before 57)', () => pm.expect(res.storeProduct).to.eql({ action: 'updated', before: 57 }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "-5 rounds up to -5, then negatives become 0.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"112\",\n  \"sku\": \"0004145811704\",\n  \"qty\": \"-5\",\n  \"date\": \"2026-10-14\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B5 - Existing BOH row in the DB, same count (unchanged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, default mode', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.appMode).to.eql('default');",
+                  "  pm.expect(res.activityLog).to.eql('not POS mode');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":1222,\"id\":1222,\"name\":\"Baridhara\"}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":23827982,\"sku\":\"4444444444444\"}));",
+                  "pm.test('date + qty', () => pm.expect([res.date, res.qtyReceived, res.qtyStored]).to.eql(['2026-09-12', '24', 24]));",
+                  "pm.test('boh 496019512 unchanged', () => pm.expect(res.boh).to.eql({ id: 496019512, action: 'unchanged', before: null }));",
+                  "pm.test('storeProduct unchanged (before 24)', () => pm.expect(res.storeProduct).to.eql({ action: 'unchanged', before: 24 }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Real row 496019512. Nothing changes.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"1222\",\n  \"sku\": \"4444444444444\",\n  \"qty\": \"24\",\n  \"date\": \"2026-09-12\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B6 - Store whose id differs from external_id (send external_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, default mode', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.appMode).to.eql('default');",
+                  "  pm.expect(res.activityLog).to.eql('not POS mode');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":5267,\"id\":333502389,\"name\":\"Kirlin, Parker and Huel\"}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":785490,\"sku\":\"0020700500000\"}));",
+                  "pm.test('date + qty', () => pm.expect([res.date, res.qtyReceived, res.qtyStored]).to.eql(['2026-10-14', '10', 10]));",
+                  "pm.test('storeQty = 0 (both turkey locations have qty 0)', () => pm.expect(res.storeQty).to.eql(0));",
+                  "pm.test('boh inserted', () => {",
+                  "  pm.expect(res.boh.action).to.eql('inserted');",
+                  "  pm.expect(res.boh.before).to.eql(null);",
+                  "  pm.expect(res.boh.id).to.be.a('number');",
+                  "});",
+                  "pm.test('storeProduct updated (before 0)', () => pm.expect(res.storeProduct).to.eql({ action: 'updated', before: 0 }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "external_id 5267 = stores.id 333502389. store_qty is read with stores.id (the CLI always saved 0 here).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"5267\",\n  \"sku\": \"0020700500000\",\n  \"qty\": \"10\",\n  \"date\": \"2026-10-14\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B7 - Internal store id instead of external_id (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Store not found for this storeId (stores.external_id).\"));",
+                  "pm.test('storeId echoed', () => pm.expect(res.storeId).to.eql('333502389'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "The feed must send stores.external_id.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"333502389\",\n  \"sku\": \"0020700500000\",\n  \"qty\": \"10\",\n  \"date\": \"2026-10-14\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B8 - Product with no store_products row in the store (INSERT both)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, default mode', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.appMode).to.eql('default');",
+                  "  pm.expect(res.activityLog).to.eql('not POS mode');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":101,\"id\":101,\"name\":\"Downtown Manhattan\"}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":132510,\"sku\":\"0003700076956\"}));",
+                  "pm.test('date + qty', () => pm.expect([res.date, res.qtyReceived, res.qtyStored]).to.eql(['2026-10-14', '12', 12]));",
+                  "pm.test('storeQty = 0', () => pm.expect(res.storeQty).to.eql(0));",
+                  "pm.test('boh inserted', () => {",
+                  "  pm.expect(res.boh.action).to.eql('inserted');",
+                  "  pm.expect(res.boh.before).to.eql(null);",
+                  "  pm.expect(res.boh.id).to.be.a('number');",
+                  "});",
+                  "pm.test('storeProduct inserted (before null)', () => pm.expect(res.storeProduct).to.eql({ action: 'inserted', before: null }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Pampers Easy Ups 3T-4T Boy Jumbo 22ct in Downtown Manhattan: no locations (storeQty 0) and no store_products row.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"101\",\n  \"sku\": \"0003700076956\",\n  \"qty\": \"12\",\n  \"date\": \"2026-10-14\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B9 - Inactive product (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Product is not active (status I). BOH is only stored for active products.\"));",
+                  "pm.test('sku echoed', () => pm.expect(res.sku).to.eql('0000008011135'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "BOH is only stored for active products.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"101\",\n  \"sku\": \"0000008011135\",\n  \"qty\": \"5\",\n  \"date\": \"2026-10-14\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B10 - Unknown SKU (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Product not found for this SKU.\"));",
+                  "pm.test('sku echoed', () => pm.expect(res.sku).to.eql('TEST-SKU-9999'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "No product has this SKU.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"101\",\n  \"sku\": \"TEST-SKU-9999\",\n  \"qty\": \"5\",\n  \"date\": \"2026-10-14\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B11 - Unknown store (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Store not found for this storeId (stores.external_id).\"));",
+                  "pm.test('storeId echoed', () => pm.expect(res.storeId).to.eql('7777'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "No store has external_id 7777.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"7777\",\n  \"sku\": \"0004145811704\",\n  \"qty\": \"5\",\n  \"date\": \"2026-10-14\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B12 - Validation errors (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('errors.storeId', () => pm.expect(res.errors.storeId).to.eql(['The store id field must be an integer.']));",
+                  "pm.test('errors.sku', () => pm.expect(res.errors.sku).to.eql(['The sku field is required.']));",
+                  "pm.test('errors.qty', () => pm.expect(res.errors.qty).to.eql(['The qty field must be a number.']));",
+                  "pm.test('errors.date', () => pm.expect(res.errors.date).to.eql(['The date field must match the format Y-m-d.']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "All 4 fields are invalid. Nothing is saved.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"abc\",\n  \"sku\": \"\",\n  \"qty\": \"x\",\n  \"date\": \"14/10/2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boh"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Deliveries",
+      "description": "POST /deliveries scenarios D1-D15b (internal/routes/delivery_routes.go). Run in order.\n\nstoreId is stores.external_id. Post-feed processing (put stock away, finish the delivery) is DISABLED, so postProcessing is always \"disabled\" and deliveries stay planned.\nD9/D10/D12/D13 write activity_logs rows. D1, D11 and D15 show \"inserted\" only before cleanup. Cleanup:\n\nBEGIN;\nDELETE FROM delivery_product_assignations WHERE delivery_product_id IN (\n  SELECT dp.id FROM delivery_products dp JOIN delivery_units du ON du.id = dp.delivery_unit_id\n  JOIN deliveries d ON d.id = du.delivery_id WHERE d.asn IN (990000001, 990000002, 990000003));\nDELETE FROM delivery_products WHERE delivery_unit_id IN (\n  SELECT du.id FROM delivery_units du JOIN deliveries d ON d.id = du.delivery_id WHERE d.asn IN (990000001, 990000002, 990000003));\nDELETE FROM delivery_units WHERE delivery_id IN (SELECT id FROM deliveries WHERE asn IN (990000001, 990000002, 990000003));\nDELETE FROM deliveries WHERE asn IN (990000001, 990000002, 990000003);\nDELETE FROM activity_logs WHERE event = 'DELIVERY_STORE_NOT_FOUND_SKIPPED' AND metadata->'stores' @> '[7777]';\nDELETE FROM activity_logs WHERE event = 'DELIVERY_PRODUCTS_NOT_FOUND_SKIPPED' AND metadata->'products' @> '[{\"asn\": 990000001}]';\nDELETE FROM activity_logs WHERE event = 'DELIVERY_FEED_RECORDS_SKIPPED' AND store_id = 1221 AND created_at >= '2026-10-14';\nCOMMIT;",
+      "item": [
+        {
+          "name": "D1 - New delivery, pallet and product (INSERT all three)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, post-processing disabled', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.postProcessing).to.eql('disabled');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129185,\"sku\":\"0004145811704\"}));",
+                  "pm.test('actions: delivery inserted, unit inserted, product inserted', () => {",
+                  "  pm.expect(res.delivery.action).to.eql('inserted');",
+                  "  pm.expect(res.deliveryUnit.action).to.eql('inserted');",
+                  "  pm.expect(res.deliveryProduct.action).to.eql('inserted');",
+                  "});",
+                  "pm.test('asn + pallet code', () => pm.expect([res.delivery.asn, res.deliveryUnit.code]).to.eql([990000001, 'TEST-DU-01']));",
+                  "pm.collectionVariables.set('deliveryD1Id', res.delivery.id);",
+                  "pm.collectionVariables.set('deliveryUnitD1Id', res.deliveryUnit.id);",
+                  "pm.collectionVariables.set('deliveryProductD1Id', res.deliveryProduct.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "ASN 990000001 for WARRENS. \"inserted\" only before cleanup.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T09:00:00Z\",\n  \"asn\": \"990000001\",\n  \"eta\": \"2026-10-20T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-01\",\n  \"deliveryUnitNumber\": \"1\",\n  \"sku\": \"0004145811704\",\n  \"description\": \"Edwards Hershey's Choco Cream Pie 5.2oz\",\n  \"expectedCases\": \"5\",\n  \"expectedUnits\": \"0\",\n  \"damagedCases\": \"0\",\n  \"from\": \"API Test DC\",\n  \"storeId\": \"112\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D2 - Repeat D1 (all unchanged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, post-processing disabled', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.postProcessing).to.eql('disabled');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129185,\"sku\":\"0004145811704\"}));",
+                  "pm.test('actions: delivery unchanged, unit unchanged, product unchanged', () => {",
+                  "  pm.expect(res.delivery.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryUnit.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryProduct.action).to.eql('unchanged');",
+                  "});",
+                  "pm.test('same delivery', () => pm.expect(res.delivery.id).to.eql(Number(pm.collectionVariables.get('deliveryD1Id'))));",
+                  "pm.test('same pallet', () => pm.expect(res.deliveryUnit.id).to.eql(Number(pm.collectionVariables.get('deliveryUnitD1Id'))));",
+                  "pm.test('same delivery product', () => pm.expect(res.deliveryProduct.id).to.eql(Number(pm.collectionVariables.get('deliveryProductD1Id'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Same row again: nothing changes.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T09:00:00Z\",\n  \"asn\": \"990000001\",\n  \"eta\": \"2026-10-20T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-01\",\n  \"deliveryUnitNumber\": \"1\",\n  \"sku\": \"0004145811704\",\n  \"description\": \"Edwards Hershey's Choco Cream Pie 5.2oz\",\n  \"expectedCases\": \"5\",\n  \"expectedUnits\": \"0\",\n  \"damagedCases\": \"0\",\n  \"from\": \"API Test DC\",\n  \"storeId\": \"112\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D3 - Second SKU on the same pallet (product INSERT only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, post-processing disabled', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.postProcessing).to.eql('disabled');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":131476,\"sku\":\"0001312000833\"}));",
+                  "pm.test('actions: delivery unchanged, unit unchanged, product inserted', () => {",
+                  "  pm.expect(res.delivery.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryUnit.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryProduct.action).to.eql('inserted');",
+                  "});",
+                  "pm.test('same delivery', () => pm.expect(res.delivery.id).to.eql(Number(pm.collectionVariables.get('deliveryD1Id'))));",
+                  "pm.test('same pallet', () => pm.expect(res.deliveryUnit.id).to.eql(Number(pm.collectionVariables.get('deliveryUnitD1Id'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Ore Ida on pallet TEST-DU-01.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T09:00:00Z\",\n  \"asn\": \"990000001\",\n  \"eta\": \"2026-10-20T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-01\",\n  \"deliveryUnitNumber\": \"1\",\n  \"sku\": \"0001312000833\",\n  \"description\": \"Ore Ida Hash Brown Shredded 30oz\",\n  \"expectedCases\": \"2\",\n  \"expectedUnits\": \"0\",\n  \"damagedCases\": \"0\",\n  \"from\": \"API Test DC\",\n  \"storeId\": \"112\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D4 - Same pallet and SKU, new quantities (UPDATE, replace not add)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, post-processing disabled', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.postProcessing).to.eql('disabled');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129185,\"sku\":\"0004145811704\"}));",
+                  "pm.test('actions: delivery unchanged, unit unchanged, product updated', () => {",
+                  "  pm.expect(res.delivery.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryUnit.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryProduct.action).to.eql('updated');",
+                  "});",
+                  "pm.test('same delivery product as D1', () => pm.expect(res.deliveryProduct.id).to.eql(Number(pm.collectionVariables.get('deliveryProductD1Id'))));",
+                  "pm.test('changes', () => pm.expect(res.deliveryProduct.changes).to.eql({",
+                  "  expected_cases: { from: 5, to: 7 },",
+                  "  damaged_cases: { from: 0, to: 1 },",
+                  "}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "expected_cases becomes 7 (not 5 + 7 = 12); damaged_cases 0 -> 1.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:00:00Z\",\n  \"asn\": \"990000001\",\n  \"eta\": \"2026-10-20T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-01\",\n  \"deliveryUnitNumber\": \"1\",\n  \"sku\": \"0004145811704\",\n  \"description\": \"Edwards Hershey's Choco Cream Pie 5.2oz\",\n  \"expectedCases\": \"7\",\n  \"expectedUnits\": \"0\",\n  \"damagedCases\": \"1\",\n  \"from\": \"API Test DC\",\n  \"storeId\": \"112\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D5 - New pallet on the same delivery (pallet INSERT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, post-processing disabled', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.postProcessing).to.eql('disabled');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129185,\"sku\":\"0004145811704\"}));",
+                  "pm.test('actions: delivery unchanged, unit inserted, product inserted', () => {",
+                  "  pm.expect(res.delivery.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryUnit.action).to.eql('inserted');",
+                  "  pm.expect(res.deliveryProduct.action).to.eql('inserted');",
+                  "});",
+                  "pm.test('pallet code', () => pm.expect(res.deliveryUnit.code).to.eql('TEST-DU-02'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Same SKU, but a different pallet is a separate delivery_products row.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:00:00Z\",\n  \"asn\": \"990000001\",\n  \"eta\": \"2026-10-20T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-02\",\n  \"deliveryUnitNumber\": \"2\",\n  \"sku\": \"0004145811704\",\n  \"description\": \"Edwards Hershey's Choco Cream Pie 5.2oz\",\n  \"expectedCases\": \"3\",\n  \"expectedUnits\": \"0\",\n  \"damagedCases\": \"0\",\n  \"from\": \"API Test DC\",\n  \"storeId\": \"112\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D6 - ETA and supplier change while planned (delivery UPDATE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, post-processing disabled', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.postProcessing).to.eql('disabled');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129185,\"sku\":\"0004145811704\"}));",
+                  "pm.test('actions: delivery updated, unit unchanged, product unchanged', () => {",
+                  "  pm.expect(res.delivery.action).to.eql('updated');",
+                  "  pm.expect(res.deliveryUnit.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryProduct.action).to.eql('unchanged');",
+                  "});",
+                  "pm.test('delivery changes', () => pm.expect(res.delivery.changes).to.eql({",
+                  "  eta: { from: '2026-10-20T08:00:00+00:00', to: '2026-10-21T08:00:00+00:00' },",
+                  "  from: { from: 'API Test DC', to: 'API Test DC 2' },",
+                  "}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "eta 20th -> 21st and from \"API Test DC\" -> \"API Test DC 2\". Pallet and product unchanged.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T11:00:00Z\",\n  \"asn\": \"990000001\",\n  \"eta\": \"2026-10-21T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-01\",\n  \"deliveryUnitNumber\": \"1\",\n  \"sku\": \"0004145811704\",\n  \"description\": \"Edwards Hershey's Choco Cream Pie 5.2oz\",\n  \"expectedCases\": \"7\",\n  \"expectedUnits\": \"0\",\n  \"damagedCases\": \"1\",\n  \"from\": \"API Test DC 2\",\n  \"storeId\": \"112\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D7 - Decimals and empty quantities",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, post-processing disabled', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.postProcessing).to.eql('disabled');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129185,\"sku\":\"0004145811704\"}));",
+                  "pm.test('actions: delivery unchanged, unit inserted, product inserted', () => {",
+                  "  pm.expect(res.delivery.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryUnit.action).to.eql('inserted');",
+                  "  pm.expect(res.deliveryProduct.action).to.eql('inserted');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "2.1 rounds up to 3; empty quantities become 0 (stored as 3 / 0 / 0).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T11:00:00Z\",\n  \"asn\": \"990000001\",\n  \"eta\": \"2026-10-21T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-03\",\n  \"deliveryUnitNumber\": \"3\",\n  \"sku\": \"0004145811704\",\n  \"description\": \"Edwards Hershey's Choco Cream Pie 5.2oz\",\n  \"expectedCases\": \"2.1\",\n  \"expectedUnits\": \"\",\n  \"damagedCases\": \"\",\n  \"from\": \"API Test DC 2\",\n  \"storeId\": \"112\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D8 - Existing real planned delivery, same data (unchanged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, post-processing disabled', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.postProcessing).to.eql('disabled');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":1222,\"id\":1222}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":23827979,\"sku\":\"1111111111111\"}));",
+                  "pm.test('actions: delivery unchanged, unit unchanged, product unchanged', () => {",
+                  "  pm.expect(res.delivery.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryUnit.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryProduct.action).to.eql('unchanged');",
+                  "});",
+                  "pm.test('ids 29963 / 52986 / 254960', () => pm.expect([res.delivery.id, res.deliveryUnit.id, res.deliveryProduct.id]).to.eql([29963, 52986, 254960]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Real delivery 29963 (store 1222, planned). Nothing changes.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T11:00:00Z\",\n  \"asn\": \"550001\",\n  \"eta\": \"2026-06-27T00:00:00Z\",\n  \"deliveryUnitCode\": \"PALLET-B01\",\n  \"deliveryUnitNumber\": \"1\",\n  \"sku\": \"1111111111111\",\n  \"description\": \"Sprite Regular 355ml\",\n  \"expectedCases\": \"6\",\n  \"expectedUnits\": \"144\",\n  \"damagedCases\": \"0\",\n  \"from\": \"Acme DC Toronto\",\n  \"storeId\": \"1222\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D9 - Delivery already processing (409 + log)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('Delivery has already started (status processing). Row skipped.'));",
+                  "pm.test('deliveryId 29962', () => pm.expect(res.deliveryId).to.eql(29962));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Delivery 29962 (store 1221) is processing: nothing changes, a DELIVERY_FEED_RECORDS_SKIPPED log is written.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T11:00:00Z\",\n  \"asn\": \"550001\",\n  \"eta\": \"2026-06-27T00:00:00Z\",\n  \"deliveryUnitCode\": \"PALLET-A01\",\n  \"deliveryUnitNumber\": \"1\",\n  \"sku\": \"1111111111111\",\n  \"description\": \"Sprite Regular 355ml\",\n  \"expectedCases\": \"9\",\n  \"expectedUnits\": \"0\",\n  \"damagedCases\": \"0\",\n  \"from\": \"Acme DC Toronto\",\n  \"storeId\": \"1221\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D10 - New pallet on the processing delivery (also 409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('Delivery has already started (status processing). Row skipped.'));",
+                  "pm.test('deliveryId 29962', () => pm.expect(res.deliveryId).to.eql(29962));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "The CLI would have reset delivery 29962 to planned here; the API blocks and logs it.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T11:00:00Z\",\n  \"asn\": \"550001\",\n  \"eta\": \"2026-06-27T00:00:00Z\",\n  \"deliveryUnitCode\": \"PALLET-A09\",\n  \"deliveryUnitNumber\": \"1\",\n  \"sku\": \"1111111111111\",\n  \"description\": \"Sprite Regular 355ml\",\n  \"expectedCases\": \"9\",\n  \"expectedUnits\": \"0\",\n  \"damagedCases\": \"0\",\n  \"from\": \"Acme DC Toronto\",\n  \"storeId\": \"1221\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D11 - Store whose id differs from external_id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, post-processing disabled', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.postProcessing).to.eql('disabled');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":5267,\"id\":333502389}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":785490,\"sku\":\"0020700500000\"}));",
+                  "pm.test('actions: delivery inserted, unit inserted, product inserted', () => {",
+                  "  pm.expect(res.delivery.action).to.eql('inserted');",
+                  "  pm.expect(res.deliveryUnit.action).to.eql('inserted');",
+                  "  pm.expect(res.deliveryProduct.action).to.eql('inserted');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "external_id 5267 = stores.id 333502389; the delivery is saved with store_id 333502389.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T11:00:00Z\",\n  \"asn\": \"990000002\",\n  \"eta\": \"2026-10-20T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-01\",\n  \"deliveryUnitNumber\": \"1\",\n  \"sku\": \"0020700500000\",\n  \"description\": \"Cooked Sliced Turkey (Deli)\",\n  \"expectedCases\": \"4\",\n  \"expectedUnits\": \"0\",\n  \"damagedCases\": \"0\",\n  \"from\": \"API Test DC\",\n  \"storeId\": \"5267\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D12 - Unknown store (422 + log)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('Store not found for this storeId (stores.external_id). Row skipped and logged.'));",
+                  "pm.test('storeId echoed', () => pm.expect(res.storeId).to.eql(7777));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Writes DELIVERY_STORE_NOT_FOUND_SKIPPED with store_id NULL and metadata {\"stores\":[7777],\"noOfProductsAffected\":1}.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T11:00:00Z\",\n  \"asn\": \"990000001\",\n  \"eta\": \"2026-10-20T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-01\",\n  \"sku\": \"0004145811704\",\n  \"expectedCases\": \"1\",\n  \"from\": \"API Test DC\",\n  \"storeId\": \"7777\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D13 - Inactive product (422 + log)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('Product not found or not active (status I). Row skipped and logged.'));",
+                  "pm.test('sku echoed', () => pm.expect(res.sku).to.eql('0000008011135'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Writes DELIVERY_PRODUCTS_NOT_FOUND_SKIPPED with store_id 112.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T11:00:00Z\",\n  \"asn\": \"990000001\",\n  \"eta\": \"2026-10-20T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-01\",\n  \"sku\": \"0000008011135\",\n  \"expectedCases\": \"1\",\n  \"from\": \"API Test DC\",\n  \"storeId\": \"112\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D14 - Validation errors (422, no log)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('errors.storeId', () => pm.expect(res.errors.storeId).to.eql(['The store id field is required.']));",
+                  "pm.test('errors.asn', () => pm.expect(res.errors.asn).to.eql(['The asn field must be an integer.']));",
+                  "pm.test('errors.eta', () => pm.expect(res.errors.eta).to.eql(['The eta field must be a valid date.']));",
+                  "pm.test('errors.deliveryUnitCode', () => pm.expect(res.errors.deliveryUnitCode).to.eql(['The delivery unit code field is required.']));",
+                  "pm.test('errors.sku', () => pm.expect(res.errors.sku).to.eql(['The sku field is required.']));",
+                  "pm.test('errors.expectedCases', () => pm.expect(res.errors.expectedCases).to.eql(['The expected cases field must be a number.']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Six invalid fields. Nothing is saved and no activity log is written.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"\",\n  \"asn\": \"abc\",\n  \"eta\": \"not a date\",\n  \"deliveryUnitCode\": \"\",\n  \"sku\": \"\",\n  \"expectedCases\": \"x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D15 - Post-processing is disabled (no stock moves)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, post-processing disabled', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.postProcessing).to.eql('disabled');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129185,\"sku\":\"0004145811704\"}));",
+                  "pm.test('actions: delivery inserted, unit inserted, product inserted', () => {",
+                  "  pm.expect(res.delivery.action).to.eql('inserted');",
+                  "  pm.expect(res.deliveryUnit.action).to.eql('inserted');",
+                  "  pm.expect(res.deliveryProduct.action).to.eql('inserted');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Post-feed processing is DISABLED in this API (no env flag). The row is saved like any other: delivery stays planned, no stock moves.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T12:00:00Z\",\n  \"asn\": \"990000003\",\n  \"eta\": \"2026-10-20T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-PP\",\n  \"deliveryUnitNumber\": \"1\",\n  \"sku\": \"0004145811704\",\n  \"description\": \"Edwards Hershey's Choco Cream Pie 5.2oz\",\n  \"expectedCases\": \"5\",\n  \"expectedUnits\": \"0\",\n  \"damagedCases\": \"0\",\n  \"from\": \"API Test DC\",\n  \"storeId\": \"112\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        },
+        {
+          "name": "D15b - Second SKU on the same ASN still works (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed, post-processing disabled', () => {",
+                  "  pm.expect(res.status).to.eql('processed');",
+                  "  pm.expect(res.postProcessing).to.eql('disabled');",
+                  "});",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":112,\"id\":112}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":131476,\"sku\":\"0001312000833\"}));",
+                  "pm.test('actions: delivery unchanged, unit unchanged, product inserted', () => {",
+                  "  pm.expect(res.delivery.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryUnit.action).to.eql('unchanged');",
+                  "  pm.expect(res.deliveryProduct.action).to.eql('inserted');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "With post-processing on, the delivery would be finished after D15 and this row would get 409. Disabled, it is simply added.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T12:00:00Z\",\n  \"asn\": \"990000003\",\n  \"eta\": \"2026-10-20T08:00:00Z\",\n  \"deliveryUnitCode\": \"TEST-DU-PP\",\n  \"deliveryUnitNumber\": \"1\",\n  \"sku\": \"0001312000833\",\n  \"description\": \"Ore Ida Hash Brown Shredded 30oz\",\n  \"expectedCases\": \"5\",\n  \"expectedUnits\": \"0\",\n  \"damagedCases\": \"0\",\n  \"from\": \"API Test DC\",\n  \"storeId\": \"112\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stocktake",
+      "description": "POST /stocktake scenarios T1-T12 (internal/routes/stocktake_routes.go). Run in order.\n\nstoreId is stores.external_id. Counts REPLACE location quantities (split evenly over the locations); store_products is not updated.\nT12 needs a temporary SQL toggle (see its description). T1 and T6 show \"inserted\" only before cleanup. Cleanup restores the values from before the tests:\n\nBEGIN;\nUPDATE product_location SET \"case\" = NULL, units = NULL, qty = 0\nWHERE id IN (15726087, 21496139, 21496172, 21496626, 39631764, 39631765);\nDELETE FROM stock_takes WHERE (store_id, product_id) IN ((102, 129465), (333502389, 785490));\nCOMMIT;",
+      "item": [
+        {
+          "name": "T1 - First count (locations set, stock_takes INSERT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":102,\"id\":102}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129465,\"sku\":\"0007457000400\"}));",
+                  "pm.test('counts', () => pm.expect(res.counts).to.eql({\"bosReceived\":\"10\",\"fosReceived\":\"7\",\"bosForLocations\":10,\"fosForLocations\":7,\"bosForStockTake\":10,\"fosForStockTake\":7}));",
+                  "pm.test('fos: 3 locations, cleared = false', () => {",
+                  "  pm.expect(res.fos.locationCount).to.eql(3);",
+                  "  pm.expect(res.fos.cleared).to.eql(false);",
+                  "});",
+                  "pm.test('fos: 21496139 updated -> 3, 21496172 updated -> 2, 21496626 updated -> 2', () => {",
+                  "  pm.expect(res.fos.locations.map(l => [l.id, l.action, l.after])).to.eql([[21496139,\"updated\",{\"case\":0,\"units\":3,\"qty\":3}],[21496172,\"updated\",{\"case\":0,\"units\":2,\"qty\":2}],[21496626,\"updated\",{\"case\":0,\"units\":2,\"qty\":2}]]);",
+                  "});",
+                  "pm.test('bos: 1 locations, cleared = false', () => {",
+                  "  pm.expect(res.bos.locationCount).to.eql(1);",
+                  "  pm.expect(res.bos.cleared).to.eql(false);",
+                  "});",
+                  "pm.test('bos: 15726087 updated -> 10', () => {",
+                  "  pm.expect(res.bos.locations.map(l => [l.id, l.action, l.after])).to.eql([[15726087,\"updated\",{\"case\":0,\"units\":10,\"qty\":10}]]);",
+                  "});",
+                  "pm.test('stockTake inserted', () => {",
+                  "  pm.expect(res.stockTake.action).to.eql('inserted');",
+                  "  pm.expect(res.stockTake.before).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "H Dazs Ice Cream Vanilla 16oz in store 102. FOS 7 over 3 locations = 3, 2, 2; BOS 10. store_products is not changed. \"inserted\" only before cleanup.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"102\",\n  \"sku\": \"0007457000400\",\n  \"bosQty\": \"10\",\n  \"fosQty\": \"7\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        },
+        {
+          "name": "T2 - Same count again (all unchanged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":102,\"id\":102}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129465,\"sku\":\"0007457000400\"}));",
+                  "pm.test('fos: 3 locations, cleared = false', () => {",
+                  "  pm.expect(res.fos.locationCount).to.eql(3);",
+                  "  pm.expect(res.fos.cleared).to.eql(false);",
+                  "});",
+                  "pm.test('fos: 21496139 unchanged -> 3, 21496172 unchanged -> 2, 21496626 unchanged -> 2', () => {",
+                  "  pm.expect(res.fos.locations.map(l => [l.id, l.action, l.after])).to.eql([[21496139,\"unchanged\",{\"case\":0,\"units\":3,\"qty\":3}],[21496172,\"unchanged\",{\"case\":0,\"units\":2,\"qty\":2}],[21496626,\"unchanged\",{\"case\":0,\"units\":2,\"qty\":2}]]);",
+                  "});",
+                  "pm.test('bos: 1 locations, cleared = false', () => {",
+                  "  pm.expect(res.bos.locationCount).to.eql(1);",
+                  "  pm.expect(res.bos.cleared).to.eql(false);",
+                  "});",
+                  "pm.test('bos: 15726087 unchanged -> 10', () => {",
+                  "  pm.expect(res.bos.locations.map(l => [l.id, l.action, l.after])).to.eql([[15726087,\"unchanged\",{\"case\":0,\"units\":10,\"qty\":10}]]);",
+                  "});",
+                  "pm.test('stockTake unchanged', () => {",
+                  "  pm.expect(res.stockTake.action).to.eql('unchanged');",
+                  "  pm.expect(res.stockTake.before).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Every location already holds the counted value.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"102\",\n  \"sku\": \"0007457000400\",\n  \"bosQty\": \"10\",\n  \"fosQty\": \"7\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        },
+        {
+          "name": "T3 - FOS count 0 (FOS cleared, values replaced)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":102,\"id\":102}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129465,\"sku\":\"0007457000400\"}));",
+                  "pm.test('fos: 3 locations, cleared = true', () => {",
+                  "  pm.expect(res.fos.locationCount).to.eql(3);",
+                  "  pm.expect(res.fos.cleared).to.eql(true);",
+                  "});",
+                  "pm.test('fos: 21496139 updated -> 0, 21496172 updated -> 0, 21496626 updated -> 0', () => {",
+                  "  pm.expect(res.fos.locations.map(l => [l.id, l.action, l.after])).to.eql([[21496139,\"updated\",{\"case\":0,\"units\":0,\"qty\":0}],[21496172,\"updated\",{\"case\":0,\"units\":0,\"qty\":0}],[21496626,\"updated\",{\"case\":0,\"units\":0,\"qty\":0}]]);",
+                  "});",
+                  "pm.test('bos: 1 locations, cleared = false', () => {",
+                  "  pm.expect(res.bos.locationCount).to.eql(1);",
+                  "  pm.expect(res.bos.cleared).to.eql(false);",
+                  "});",
+                  "pm.test('bos: 15726087 updated -> 4', () => {",
+                  "  pm.expect(res.bos.locations.map(l => [l.id, l.action, l.after])).to.eql([[15726087,\"updated\",{\"case\":0,\"units\":4,\"qty\":4}]]);",
+                  "});",
+                  "pm.test('BOS before qty 10', () => pm.expect(res.bos.locations[0].before.qty).to.eql(10));",
+                  "pm.test('stockTake updated', () => {",
+                  "  pm.expect(res.stockTake.action).to.eql('updated');",
+                  "  pm.expect(res.stockTake.before).to.eql({\"bosQty\":10,\"fosQty\":7});",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "FOS cleared to 0. BOS 10 -> 4 (replaced, not 14).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"102\",\n  \"sku\": \"0007457000400\",\n  \"bosQty\": \"4\",\n  \"fosQty\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        },
+        {
+          "name": "T4 - Decimals (round down for locations, up for stock_takes)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":102,\"id\":102}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129465,\"sku\":\"0007457000400\"}));",
+                  "pm.test('counts', () => pm.expect(res.counts).to.eql({\"bosReceived\":\"5.7\",\"fosReceived\":\"2.2\",\"bosForLocations\":5,\"fosForLocations\":2,\"bosForStockTake\":6,\"fosForStockTake\":3}));",
+                  "pm.test('fos: 3 locations, cleared = false', () => {",
+                  "  pm.expect(res.fos.locationCount).to.eql(3);",
+                  "  pm.expect(res.fos.cleared).to.eql(false);",
+                  "});",
+                  "pm.test('fos: 21496139 updated -> 1, 21496172 updated -> 1, 21496626 unchanged -> 0', () => {",
+                  "  pm.expect(res.fos.locations.map(l => [l.id, l.action, l.after])).to.eql([[21496139,\"updated\",{\"case\":0,\"units\":1,\"qty\":1}],[21496172,\"updated\",{\"case\":0,\"units\":1,\"qty\":1}],[21496626,\"unchanged\",{\"case\":0,\"units\":0,\"qty\":0}]]);",
+                  "});",
+                  "pm.test('bos: 1 locations, cleared = false', () => {",
+                  "  pm.expect(res.bos.locationCount).to.eql(1);",
+                  "  pm.expect(res.bos.cleared).to.eql(false);",
+                  "});",
+                  "pm.test('bos: 15726087 updated -> 5', () => {",
+                  "  pm.expect(res.bos.locations.map(l => [l.id, l.action, l.after])).to.eql([[15726087,\"updated\",{\"case\":0,\"units\":5,\"qty\":5}]]);",
+                  "});",
+                  "pm.test('stockTake updated', () => {",
+                  "  pm.expect(res.stockTake.action).to.eql('updated');",
+                  "  pm.expect(res.stockTake.before).to.eql({\"bosQty\":4,\"fosQty\":0});",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Locations: BOS 5, FOS 2 over 3 = 1, 1, 0. stock_takes: 6 / 3.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"102\",\n  \"sku\": \"0007457000400\",\n  \"bosQty\": \"5.7\",\n  \"fosQty\": \"2.2\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        },
+        {
+          "name": "T5 - Negative count",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":102,\"id\":102}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129465,\"sku\":\"0007457000400\"}));",
+                  "pm.test('counts', () => pm.expect(res.counts).to.eql({\"bosReceived\":\"5\",\"fosReceived\":\"-3\",\"bosForLocations\":5,\"fosForLocations\":0,\"bosForStockTake\":5,\"fosForStockTake\":-3}));",
+                  "pm.test('fos: 3 locations, cleared = true', () => {",
+                  "  pm.expect(res.fos.locationCount).to.eql(3);",
+                  "  pm.expect(res.fos.cleared).to.eql(true);",
+                  "});",
+                  "pm.test('fos: 21496139 updated -> 0, 21496172 updated -> 0, 21496626 unchanged -> 0', () => {",
+                  "  pm.expect(res.fos.locations.map(l => [l.id, l.action, l.after])).to.eql([[21496139,\"updated\",{\"case\":0,\"units\":0,\"qty\":0}],[21496172,\"updated\",{\"case\":0,\"units\":0,\"qty\":0}],[21496626,\"unchanged\",{\"case\":0,\"units\":0,\"qty\":0}]]);",
+                  "});",
+                  "pm.test('bos: 1 locations, cleared = false', () => {",
+                  "  pm.expect(res.bos.locationCount).to.eql(1);",
+                  "  pm.expect(res.bos.cleared).to.eql(false);",
+                  "});",
+                  "pm.test('bos: 15726087 unchanged -> 5', () => {",
+                  "  pm.expect(res.bos.locations.map(l => [l.id, l.action, l.after])).to.eql([[15726087,\"unchanged\",{\"case\":0,\"units\":5,\"qty\":5}]]);",
+                  "});",
+                  "pm.test('stockTake updated', () => {",
+                  "  pm.expect(res.stockTake.action).to.eql('updated');",
+                  "  pm.expect(res.stockTake.before).to.eql({\"bosQty\":6,\"fosQty\":3});",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "FOS cleared (0, 0, 0), BOS 5. stock_takes keeps fos_qty -3 (CLI behaviour).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"102\",\n  \"sku\": \"0007457000400\",\n  \"bosQty\": \"5\",\n  \"fosQty\": \"-3\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        },
+        {
+          "name": "T6 - Store whose id differs from external_id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":5267,\"id\":333502389}));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":785490,\"sku\":\"0020700500000\"}));",
+                  "pm.test('fos: 1 locations, cleared = false', () => {",
+                  "  pm.expect(res.fos.locationCount).to.eql(1);",
+                  "  pm.expect(res.fos.cleared).to.eql(false);",
+                  "});",
+                  "pm.test('fos: 39631765 updated -> 3', () => {",
+                  "  pm.expect(res.fos.locations.map(l => [l.id, l.action, l.after])).to.eql([[39631765,\"updated\",{\"case\":0,\"units\":3,\"qty\":3}]]);",
+                  "});",
+                  "pm.test('bos: 1 locations, cleared = false', () => {",
+                  "  pm.expect(res.bos.locationCount).to.eql(1);",
+                  "  pm.expect(res.bos.cleared).to.eql(false);",
+                  "});",
+                  "pm.test('bos: 39631764 updated -> 8', () => {",
+                  "  pm.expect(res.bos.locations.map(l => [l.id, l.action, l.after])).to.eql([[39631764,\"updated\",{\"case\":0,\"units\":8,\"qty\":8}]]);",
+                  "});",
+                  "pm.test('stockTake inserted', () => {",
+                  "  pm.expect(res.stockTake.action).to.eql('inserted');",
+                  "  pm.expect(res.stockTake.before).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "external_id 5267 = stores.id 333502389. BOS 39631764 = 8, FOS 39631765 (Virtual FoS - 785490) = 3.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"5267\",\n  \"sku\": \"0020700500000\",\n  \"bosQty\": \"8\",\n  \"fosQty\": \"3\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        },
+        {
+          "name": "T7 - Product on an open picklist (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Product is on an open picklist in this store. Complete the picklist first.\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Picklist 51696 (status N) in store 112. stock_takes row 76085 (24 / 65) is not changed.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"112\",\n  \"sku\": \"0885919001035\",\n  \"bosQty\": \"20\",\n  \"fosQty\": \"60\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        },
+        {
+          "name": "T8 - No back-of-store location (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Product has no back-of-store location in this store.\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Pampers (id 132510) has no locations in store 101.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"101\",\n  \"sku\": \"0003700076956\",\n  \"bosQty\": \"5\",\n  \"fosQty\": \"5\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        },
+        {
+          "name": "T9 - Inactive product (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Product is not active (status I).\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Status I.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"101\",\n  \"sku\": \"0000008011135\",\n  \"bosQty\": \"5\",\n  \"fosQty\": \"5\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        },
+        {
+          "name": "T10 - Unknown store (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Store not found for this storeId (stores.external_id).\"));",
+                  "pm.test('storeId echoed', () => pm.expect(res.storeId).to.eql('7777'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "No store has external_id 7777.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"7777\",\n  \"sku\": \"0007457000400\",\n  \"bosQty\": \"5\",\n  \"fosQty\": \"5\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        },
+        {
+          "name": "T11 - Validation errors (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('errors.storeId', () => pm.expect(res.errors.storeId).to.eql(['The store id field must be an integer.']));",
+                  "pm.test('errors.sku', () => pm.expect(res.errors.sku).to.eql(['The sku field is required.']));",
+                  "pm.test('errors.bosQty', () => pm.expect(res.errors.bosQty).to.eql(['The bos qty field is required.']));",
+                  "pm.test('errors.fosQty', () => pm.expect(res.errors.fosQty).to.eql(['The fos qty field must be a number.']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "All 4 fields are invalid. Nothing is saved.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"abc\",\n  \"sku\": \"\",\n  \"bosQty\": \"\",\n  \"fosQty\": \"x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        },
+        {
+          "name": "T12 - Sync-up block (409, needs the SQL toggle)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (pm.response.code === 409) {",
+                  "  pm.test('sync-up on: 409 with message', () => pm.expect(res.error).to.eql(\"Product's department is in sync-up mode in this store.\"));",
+                  "} else {",
+                  "  pm.test('sync-up NOT switched on (run the SQL in the description for the 409): 200', () => pm.response.to.have.status(200));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Before sending, turn sync-up on for the product's department in store 102:\n\nUPDATE store_departments SET sync_up_mode = true\nWHERE store_id = 102 AND department_id IN (\n  SELECT d.id FROM departments d\n  JOIN categories c ON c.level_3_name = d.name\n  JOIN products p ON p.category_id = c.id\n  WHERE p.id = 129465);\n\nExpected: 409. Without the toggle this returns 200 (T1 values written again). Afterwards switch it back:\n\nUPDATE store_departments SET sync_up_mode = false\nWHERE store_id = 102 AND department_id IN (\n  SELECT d.id FROM departments d\n  JOIN categories c ON c.level_3_name = d.name\n  JOIN products p ON p.category_id = c.id\n  WHERE p.id = 129465);",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"102\",\n  \"sku\": \"0007457000400\",\n  \"bosQty\": \"10\",\n  \"fosQty\": \"7\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stocktake",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stocktake"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Product Variants",
+      "description": "POST /product-variants scenarios V1-V10 (internal/routes/product_variant_routes.go). Run in order.\n\nThe feed only INSERTS links (never updates or deletes), so preferred rows stay preferred. Send both fields as strings.\nV3 and V5 show \"inserted\" only before cleanup. Cleanup:\n\nDELETE FROM product_variant WHERE variant LIKE 'TEST-VAR-%';",
+      "item": [
+        {
+          "name": "V1 - Existing link (unchanged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129121,\"sku\":\"0000510000750\"}));",
+                  "pm.test('variant echoed', () => pm.expect(res.variant).to.eql('05100007508'));",
+                  "pm.test('variantRow unchanged, related', () => {",
+                  "  pm.expect(res.variantRow.action).to.eql('unchanged');",
+                  "  pm.expect(res.variantRow.variantStatus).to.eql('related');",
+                  "  pm.expect(res.variantRow.id).to.be.a('number');",
+                  "});",
+                  "pm.test('alsoLinkedTo', () => pm.expect(res.alsoLinkedTo).to.eql([]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Pepp Farm Puff Pastry Shells (129121) already has this variant.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentSku\": \"0000510000750\",\n  \"variantSku\": \"05100007508\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-variants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-variants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "V2 - Existing preferred link (unchanged, status kept)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":788345,\"sku\":\"0082608858410\"}));",
+                  "pm.test('variant echoed', () => pm.expect(res.variant).to.eql('82608858410'));",
+                  "pm.test('variantRow unchanged, preferred', () => {",
+                  "  pm.expect(res.variantRow.action).to.eql('unchanged');",
+                  "  pm.expect(res.variantRow.variantStatus).to.eql('preferred');",
+                  "  pm.expect(res.variantRow.id).to.be.a('number');",
+                  "});",
+                  "pm.test('row 153672', () => pm.expect(res.variantRow.id).to.eql(153672));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Row 153672 is preferred (set by the app). The feed never resets it.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentSku\": \"0082608858410\",\n  \"variantSku\": \"82608858410\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-variants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-variants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "V3 - New variant (INSERT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129121,\"sku\":\"0000510000750\"}));",
+                  "pm.test('variant echoed', () => pm.expect(res.variant).to.eql('TEST-VAR-0001'));",
+                  "pm.test('variantRow inserted, related', () => {",
+                  "  pm.expect(res.variantRow.action).to.eql('inserted');",
+                  "  pm.expect(res.variantRow.variantStatus).to.eql('related');",
+                  "  pm.expect(res.variantRow.id).to.be.a('number');",
+                  "});",
+                  "pm.test('alsoLinkedTo', () => pm.expect(res.alsoLinkedTo).to.eql([]));",
+                  "pm.collectionVariables.set('variantV3Id', res.variantRow.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "status related and created_at come from the DB defaults. \"inserted\" only before cleanup.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentSku\": \"0000510000750\",\n  \"variantSku\": \"TEST-VAR-0001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-variants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-variants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "V4 - Repeat V3 (unchanged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":129121,\"sku\":\"0000510000750\"}));",
+                  "pm.test('variant echoed', () => pm.expect(res.variant).to.eql('TEST-VAR-0001'));",
+                  "pm.test('variantRow unchanged, related', () => {",
+                  "  pm.expect(res.variantRow.action).to.eql('unchanged');",
+                  "  pm.expect(res.variantRow.variantStatus).to.eql('related');",
+                  "  pm.expect(res.variantRow.id).to.be.a('number');",
+                  "});",
+                  "pm.test('same row as V3', () => pm.expect(res.variantRow.id).to.eql(Number(pm.collectionVariables.get('variantV3Id'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Same row as V3.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentSku\": \"0000510000750\",\n  \"variantSku\": \"TEST-VAR-0001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-variants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-variants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "V5 - Same variant code for a second product (INSERT, shared)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":131476,\"sku\":\"0001312000833\"}));",
+                  "pm.test('variant echoed', () => pm.expect(res.variant).to.eql('TEST-VAR-0001'));",
+                  "pm.test('variantRow inserted, related', () => {",
+                  "  pm.expect(res.variantRow.action).to.eql('inserted');",
+                  "  pm.expect(res.variantRow.variantStatus).to.eql('related');",
+                  "  pm.expect(res.variantRow.id).to.be.a('number');",
+                  "});",
+                  "pm.test('alsoLinkedTo', () => pm.expect(res.alsoLinkedTo).to.eql([{\"productId\":129121,\"sku\":\"0000510000750\"}]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Ore Ida (131476) gets the same code; scanning TEST-VAR-0001 can now match either product.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentSku\": \"0001312000833\",\n  \"variantSku\": \"TEST-VAR-0001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-variants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-variants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "V6 - Real shared variant in the DB (unchanged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('product', () => pm.expect(res.product).to.eql({\"id\":21517622,\"sku\":\"0078000010044\"}));",
+                  "pm.test('variant echoed', () => pm.expect(res.variant).to.eql('0078000010044'));",
+                  "pm.test('variantRow unchanged, preferred', () => {",
+                  "  pm.expect(res.variantRow.action).to.eql('unchanged');",
+                  "  pm.expect(res.variantRow.variantStatus).to.eql('preferred');",
+                  "  pm.expect(res.variantRow.id).to.be.a('number');",
+                  "});",
+                  "pm.test('alsoLinkedTo', () => pm.expect(res.alsoLinkedTo).to.eql([{\"productId\":15467068,\"sku\":\"0780000100442\"}]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Product 21517622 already has this code (preferred); 15467068 (0780000100442) uses it too.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentSku\": \"0078000010044\",\n  \"variantSku\": \"0078000010044\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-variants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-variants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "V7 - Inactive parent (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Parent product is not active (status I).\"));",
+                  "pm.test('parentSku echoed', () => pm.expect(res.parentSku).to.eql('0000008011135'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Only active parents get new links.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentSku\": \"0000008011135\",\n  \"variantSku\": \"TEST-VAR-0002\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-variants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-variants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "V8 - Parent not found (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Parent product not found for this SKU.\"));",
+                  "pm.test('parentSku echoed', () => pm.expect(res.parentSku).to.eql('TEST-SKU-9999'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "No product has this SKU.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentSku\": \"TEST-SKU-9999\",\n  \"variantSku\": \"TEST-VAR-0003\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-variants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-variants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "V9 - Number instead of string (422, leading zeros lost)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql(\"Parent product not found for this SKU.\"));",
+                  "pm.test('parentSku echoed', () => pm.expect(res.parentSku).to.eql('510000750'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "510000750 is not 0000510000750. Always send both fields as strings.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentSku\": 510000750,\n  \"variantSku\": \"TEST-VAR-0004\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-variants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-variants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "V10 - Missing fields (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('errors.parentSku', () => pm.expect(res.errors.parentSku).to.eql(['The parent sku field is required.']));",
+                  "pm.test('errors.variantSku', () => pm.expect(res.errors.variantSku).to.eql(['The variant sku field is required.']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "\"  \" becomes \"\" after trimming.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentSku\": \"\",\n  \"variantSku\": \"  \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/product-variants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product-variants"
               ]
             }
           }
