@@ -143,6 +143,14 @@ func validationMessages(verrs validator.ValidationErrors) map[string][]string {
 			msg = fmt.Sprintf("The %s field is required.", label)
 		case "max":
 			msg = fmt.Sprintf("The %s field must not be greater than %s characters.", label, fe.Param())
+		case "oneof":
+			msg = fmt.Sprintf("The selected %s is invalid.", label)
+		case "numeric":
+			msg = fmt.Sprintf("The %s field must be a number.", label)
+		case "number":
+			msg = fmt.Sprintf("The %s field must be an integer.", label)
+		case "datetime":
+			msg = fmt.Sprintf("The %s field must match the format Y-m-d.", label)
 		}
 		errs[jsonName] = append(errs[jsonName], msg)
 	}
