@@ -52,5 +52,10 @@ func SetupRouter(db *gorm.DB) *gin.Engine {
 	productVariantHandler := handler.NewProductVariantHandler(productVariantRepo)
 	RegisterProductVariantRoutes(r.Group("/product-variants"), productVariantHandler)
 
+	// POS (sales + replenishment picklists)
+	posRepo := repository.NewPosRepository(db)
+	posHandler := handler.NewPosHandler(posRepo)
+	RegisterPosRoutes(r.Group("/pos"), posHandler)
+
 	return r
 }

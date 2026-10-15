@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "feed-api",
-    "description": "All feed-api endpoints, one folder per route file (internal/routes/*_routes.go).\n\n1. Start the API: go run ./cmd\n2. Set the baseUrl collection variable if your server is not http://localhost:8080\n3. Run the whole collection with the Collection Runner (requests run in order; some depend on earlier ones).\n4. Test rows (vendors with external_id postman-test-*, product-hierarchy test departments) stay in the DB; delete them manually if needed.\n\nProduct Hierarchies scenarios 4, 5, 6 and 8 only show \"inserted\" on the first run.\n\nProducts: test rows (TEST-SKU-0001/0002, brand TESTBRANDAPI) are removed with the cleanup SQL in the Products folder description. S4 and S10 only show \"inserted\" when the test SKUs do not exist yet.\n\nProduct UPCs: test rows (upc 999000000001-4) are removed with the cleanup SQL in the Product UPCs folder description.\n\nBOH: run the cleanup SQL in the BOH folder description after testing; it restores the original store_products values.\n\nDeliveries: run the cleanup SQL in the Deliveries folder description after testing (test ASNs 990000001-3 and the activity logs).\n\nStocktake: run the cleanup SQL in the Stocktake folder description after testing; it restores the location quantities.\n\nProduct Variants: run DELETE FROM product_variant WHERE variant LIKE 'TEST-VAR-%'; after testing.",
+    "description": "All feed-api endpoints, one folder per route file (internal/routes/*_routes.go).\n\n1. Start the API: go run ./cmd\n2. Set the baseUrl collection variable if your server is not http://localhost:8080\n3. Run the whole collection with the Collection Runner (requests run in order; some depend on earlier ones).\n4. Test rows (vendors with external_id postman-test-*, product-hierarchy test departments) stay in the DB; delete them manually if needed.\n\nProduct Hierarchies scenarios 4, 5, 6 and 8 only show \"inserted\" on the first run.\n\nProducts: test rows (TEST-SKU-0001/0002, brand TESTBRANDAPI) are removed with the cleanup SQL in the Products folder description. S4 and S10 only show \"inserted\" when the test SKUs do not exist yet.\n\nProduct UPCs: test rows (upc 999000000001-4) are removed with the cleanup SQL in the Product UPCs folder description.\n\nBOH: run the cleanup SQL in the BOH folder description after testing; it restores the original store_products values.\n\nDeliveries: run the cleanup SQL in the Deliveries folder description after testing (test ASNs 990000001-3 and the activity logs).\n\nStocktake: run the cleanup SQL in the Stocktake folder description after testing; it restores the location quantities.\n\nProduct Variants: run DELETE FROM product_variant WHERE variant LIKE 'TEST-VAR-%'; after testing.\n\nPOS: run the cleanup SQL in the POS folder description after testing; it restores stock, counters and picklists.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -47,6 +47,14 @@
     },
     {
       "key": "variantV3Id",
+      "value": ""
+    },
+    {
+      "key": "posP3ItemId",
+      "value": ""
+    },
+    {
+      "key": "posP5PicklistId",
       "value": ""
     }
   ],
@@ -5469,6 +5477,812 @@
               ],
               "path": [
                 "product-variants"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "POS",
+      "description": "POST /pos scenarios P1-P14 (internal/routes/pos_routes.go). Run in order: each step depends on the counters left by the previous one.\n\nstoreId is stores.external_id. Default app mode: new picklists get the type \"department\" (\"moq\" is a commented line for POS mode).\nEvery test uses register 77. The tests only pass on the starting values; run this cleanup after testing (and before re-running):\n\nBEGIN;\nDELETE FROM pos WHERE register = 77;\nDELETE FROM picklist_products WHERE picklist_id = 51570 AND product_id = 129468;\nCREATE TEMP TABLE test_pl AS SELECT id FROM picklists WHERE store_id = 101 AND department_id = 66 AND status = 'N' AND name = 'BABY DIAPERS';\nDELETE FROM picklist_products WHERE picklist_id IN (SELECT id FROM test_pl);\nDELETE FROM picklist_groups  WHERE picklist_type_id IN (SELECT id FROM picklist_types WHERE picklist_id IN (SELECT id FROM test_pl));\nDELETE FROM picklist_types   WHERE picklist_id IN (SELECT id FROM test_pl);\nDELETE FROM store_picklists  WHERE picklist_id IN (SELECT id FROM test_pl);\nDELETE FROM picklists        WHERE id IN (SELECT id FROM test_pl);\nDROP TABLE test_pl;\nUPDATE picklist_products SET pickedup_quantity = 24, pickedup_cases = 2, desired_quantity = 24 WHERE id = 599165;\nUPDATE store_products SET total_qty = 24, deduction_counter = 0  WHERE store_id = 101  AND product_id = 129185;\nUPDATE store_products SET total_qty = 38, deduction_counter = 3  WHERE store_id = 102  AND product_id = 129468;\nUPDATE store_products SET total_qty = 46, deduction_counter = 0  WHERE store_id = 101  AND product_id = 132374;\nUPDATE store_products SET total_qty = 42, deduction_counter = 2  WHERE store_id = 101  AND product_id = 132375;\nUPDATE store_products SET total_qty = 0,  deduction_counter = 2  WHERE store_id = 101  AND product_id = 15695037;\nUPDATE store_products SET total_qty = 12, deduction_counter = 11 WHERE store_id = 1221 AND product_id = 23827981;\nCOMMIT;",
+      "item": [
+        {
+          "name": "P1 - Sale, trigger not reached (no picklist)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":101,\"id\":101}));",
+                  "pm.test('saleProduct', () => pm.expect(res.saleProduct).to.eql({\"id\":129185,\"sku\":\"0004145811704\",\"matchedBy\":\"sku\"}));",
+                  "pm.test('qtyStored = 2', () => pm.expect(res.qtyStored).to.eql(2));",
+                  "pm.test('deduction 24 -> 22, counter 0 -> 2', () => pm.expect(res.deduction).to.eql({",
+                  "  applied: true, before: { totalQty: 24, deductionCounter: 0 }, after: { totalQty: 22, deductionCounter: 2 },",
+                  "}));",
+                  "pm.test('picklists.result = no picklist needed', () => pm.expect(res.picklists.result).to.eql(\"no picklist needed\"));",
+                  "pm.test('filteredOut reason', () => pm.expect(res.picklists.filteredOut).to.eql([{ productId: 129185, reason: 'deduction_counter 2 < trigger 12 (moq 1 x inner_pack 12)' }]));",
+                  "pm.test('posRecord inserted', () => pm.expect(res.posRecord.action).to.eql('inserted'));",
+                  "pm.test('no empty picklists removed', () => pm.expect(res.emptyPicklistsRemoved).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Edwards Hershey's Choco Cream Pie, store 101: total_qty 24 -> 22, counter 0 -> 2 (trigger 12).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:00:00Z\",\n  \"storeId\": \"101\",\n  \"register\": \"77\",\n  \"operator\": \"12\",\n  \"transactionType\": \"SALE\",\n  \"transaction\": \"1990000001\",\n  \"seqNumber\": \"1\",\n  \"sku\": \"0004145811704\",\n  \"qty\": \"2\",\n  \"regularPriceEach\": \"4.99\",\n  \"soldPriceEach\": \"4.99\",\n  \"isPriceOverride\": \"0\",\n  \"discountCode\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P2 - Same row again (counted twice)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":101,\"id\":101}));",
+                  "pm.test('saleProduct', () => pm.expect(res.saleProduct).to.eql({\"id\":129185,\"sku\":\"0004145811704\",\"matchedBy\":\"sku\"}));",
+                  "pm.test('qtyStored = 2', () => pm.expect(res.qtyStored).to.eql(2));",
+                  "pm.test('deduction 22 -> 20, counter 2 -> 4', () => pm.expect(res.deduction).to.eql({",
+                  "  applied: true, before: { totalQty: 22, deductionCounter: 2 }, after: { totalQty: 20, deductionCounter: 4 },",
+                  "}));",
+                  "pm.test('picklists.result = no picklist needed', () => pm.expect(res.picklists.result).to.eql(\"no picklist needed\"));",
+                  "pm.test('posRecord updated, qty 2 -> 4', () => {",
+                  "  pm.expect(res.posRecord.action).to.eql('updated');",
+                  "  pm.expect([res.posRecord.qtyBefore, res.posRecord.qtyAfter]).to.eql([2, 4]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Resending a row deducts again and adds to the pos qty. The sender must never resend a row that succeeded.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:00:00Z\",\n  \"storeId\": \"101\",\n  \"register\": \"77\",\n  \"operator\": \"12\",\n  \"transactionType\": \"SALE\",\n  \"transaction\": \"1990000001\",\n  \"seqNumber\": \"1\",\n  \"sku\": \"0004145811704\",\n  \"qty\": \"2\",\n  \"regularPriceEach\": \"4.99\",\n  \"soldPriceEach\": \"4.99\",\n  \"isPriceOverride\": \"0\",\n  \"discountCode\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P3 - Trigger reached, existing open picklist (item added)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":102,\"id\":102}));",
+                  "pm.test('saleProduct', () => pm.expect(res.saleProduct).to.eql({\"id\":129468,\"sku\":\"0007457001400\",\"matchedBy\":\"sku\"}));",
+                  "pm.test('qtyStored = 5', () => pm.expect(res.qtyStored).to.eql(5));",
+                  "pm.test('deduction 38 -> 33, counter 3 -> 8', () => pm.expect(res.deduction).to.eql({",
+                  "  applied: true, before: { totalQty: 38, deductionCounter: 3 }, after: { totalQty: 33, deductionCounter: 8 },",
+                  "}));",
+                  "pm.test('picklists.result = processed', () => pm.expect(res.picklists.result).to.eql(\"processed\"));",
+                  "pm.test('no picklist created', () => pm.expect(res.picklists.createdPicklists).to.eql([]));",
+                  "pm.test('added to picklist 51570: 1 case, qty 8', () => {",
+                  "  const a = res.picklists.addedToPicklists;",
+                  "  pm.expect(a.length).to.eql(1);",
+                  "  pm.expect([a[0].picklistId, a[0].productId, a[0].cases, a[0].qty]).to.eql([51570, 129468, 1, 8]);",
+                  "});",
+                  "pm.test('countersReset', () => pm.expect(res.picklists.countersReset).to.eql([{\"productId\":129468,\"by\":8,\"pickedCases\":1}]));",
+                  "pm.test('posRecord inserted', () => pm.expect(res.posRecord.action).to.eql('inserted'));",
+                  "pm.collectionVariables.set('posP3ItemId', res.picklists.addedToPicklists[0].picklistProductId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "H Dazs Chocolate, store 102: 38 -> 33, counter 3 -> 8 = trigger 8. Added to open picklist 51570 (ICECREAM/DESSERTS).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:05:00Z\",\n  \"storeId\": \"102\",\n  \"register\": \"77\",\n  \"operator\": \"12\",\n  \"transactionType\": \"SALE\",\n  \"transaction\": \"1990000002\",\n  \"seqNumber\": \"1\",\n  \"sku\": \"0007457001400\",\n  \"qty\": \"5\",\n  \"regularPriceEach\": \"7.49\",\n  \"soldPriceEach\": \"7.49\",\n  \"isPriceOverride\": \"0\",\n  \"discountCode\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P4 - Sale by variant code (top-up of that item)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":102,\"id\":102}));",
+                  "pm.test('saleProduct', () => pm.expect(res.saleProduct).to.eql({\"id\":129468,\"sku\":\"0007457001400\",\"matchedBy\":\"variant\"}));",
+                  "pm.test('qtyStored = 8', () => pm.expect(res.qtyStored).to.eql(8));",
+                  "pm.test('deduction 33 -> 25, counter 0 -> 8', () => pm.expect(res.deduction).to.eql({",
+                  "  applied: true, before: { totalQty: 33, deductionCounter: 0 }, after: { totalQty: 25, deductionCounter: 8 },",
+                  "}));",
+                  "pm.test('picklists.result = processed', () => pm.expect(res.picklists.result).to.eql(\"processed\"));",
+                  "pm.test('P3 item topped up by 1 case (8)', () => pm.expect(res.picklists.toppedUp).to.eql([{",
+                  "  picklistProductId: Number(pm.collectionVariables.get('posP3ItemId')), picklistId: 51570, productId: 129468, addedCases: 1, addedQty: 8,",
+                  "}]));",
+                  "pm.test('nothing added or created', () => pm.expect([res.picklists.addedToPicklists, res.picklists.createdPicklists]).to.eql([[], []]));",
+                  "pm.test('countersReset', () => pm.expect(res.picklists.countersReset).to.eql([{\"productId\":129468,\"by\":8,\"pickedCases\":1}]));",
+                  "pm.test('posRecord inserted', () => pm.expect(res.posRecord.action).to.eql('inserted'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "341558110228 is a variant of H Dazs Chocolate. 33 -> 25, counter 0 -> 8; the P3 item is topped up 8 -> 16. pos.sku keeps the variant code.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:10:00Z\",\n  \"storeId\": \"102\",\n  \"register\": \"77\",\n  \"operator\": \"12\",\n  \"transactionType\": \"SALE\",\n  \"transaction\": \"1990000003\",\n  \"seqNumber\": \"1\",\n  \"sku\": \"341558110228\",\n  \"qty\": \"8\",\n  \"regularPriceEach\": \"7.49\",\n  \"soldPriceEach\": \"7.49\",\n  \"isPriceOverride\": \"0\",\n  \"discountCode\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P5 - Trigger reached, no open picklist (new picklist)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":101,\"id\":101}));",
+                  "pm.test('saleProduct', () => pm.expect(res.saleProduct).to.eql({\"id\":132374,\"sku\":\"0003600049678\",\"matchedBy\":\"sku\"}));",
+                  "pm.test('qtyStored = 5', () => pm.expect(res.qtyStored).to.eql(5));",
+                  "pm.test('deduction 46 -> 41, counter 0 -> 5', () => pm.expect(res.deduction).to.eql({",
+                  "  applied: true, before: { totalQty: 46, deductionCounter: 0 }, after: { totalQty: 41, deductionCounter: 5 },",
+                  "}));",
+                  "pm.test('picklists.result = processed', () => pm.expect(res.picklists.result).to.eql(\"processed\"));",
+                  "pm.test('created BABY DIAPERS picklist, sequence 986, type department', () => {",
+                  "  const c = res.picklists.createdPicklists;",
+                  "  pm.expect(c.length).to.eql(1);",
+                  "  pm.expect([c[0].name, c[0].sequence, c[0].department_id, c[0].replenishment_type, c[0].typeName]).to.eql(['BABY DIAPERS', 986, 66, 'filltomax', 'department']);",
+                  "});",
+                  "pm.test('added: 1 case, qty 4, on the new picklist', () => {",
+                  "  const a = res.picklists.addedToPicklists;",
+                  "  pm.expect([a.length, a[0].picklistId, a[0].cases, a[0].qty]).to.eql([1, res.picklists.createdPicklists[0].id, 1, 4]);",
+                  "});",
+                  "pm.test('countersReset', () => pm.expect(res.picklists.countersReset).to.eql([{\"productId\":132374,\"by\":4,\"pickedCases\":1}]));",
+                  "pm.test('posRecord inserted', () => pm.expect(res.posRecord.action).to.eql('inserted'));",
+                  "pm.collectionVariables.set('posP5PicklistId', res.picklists.createdPicklists[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Huggies S3, store 101, department 66 BABY DIAPERS: 46 -> 41, counter 0 -> 5 >= 4. New picklist \"BABY DIAPERS\", sequence 986, type department. Counter 5 - 4 = 1. \"Created\" only before cleanup.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:15:00Z\",\n  \"storeId\": \"101\",\n  \"register\": \"77\",\n  \"operator\": \"12\",\n  \"transactionType\": \"SALE\",\n  \"transaction\": \"1990000004\",\n  \"seqNumber\": \"1\",\n  \"sku\": \"0003600049678\",\n  \"qty\": \"5\",\n  \"regularPriceEach\": \"9.99\",\n  \"soldPriceEach\": \"9.99\",\n  \"isPriceOverride\": \"0\",\n  \"discountCode\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P6 - Second product in the same department (joins the new picklist)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":101,\"id\":101}));",
+                  "pm.test('saleProduct', () => pm.expect(res.saleProduct).to.eql({\"id\":132375,\"sku\":\"0003600049679\",\"matchedBy\":\"sku\"}));",
+                  "pm.test('qtyStored = 2', () => pm.expect(res.qtyStored).to.eql(2));",
+                  "pm.test('deduction 42 -> 40, counter 2 -> 4', () => pm.expect(res.deduction).to.eql({",
+                  "  applied: true, before: { totalQty: 42, deductionCounter: 2 }, after: { totalQty: 40, deductionCounter: 4 },",
+                  "}));",
+                  "pm.test('picklists.result = processed', () => pm.expect(res.picklists.result).to.eql(\"processed\"));",
+                  "pm.test('no picklist created', () => pm.expect(res.picklists.createdPicklists).to.eql([]));",
+                  "pm.test('added to the P5 picklist: 1 case, qty 4', () => {",
+                  "  const a = res.picklists.addedToPicklists;",
+                  "  pm.expect([a.length, a[0].picklistId, a[0].cases, a[0].qty]).to.eql([1, Number(pm.collectionVariables.get('posP5PicklistId')), 1, 4]);",
+                  "});",
+                  "pm.test('countersReset', () => pm.expect(res.picklists.countersReset).to.eql([{\"productId\":132375,\"by\":4,\"pickedCases\":1}]));",
+                  "pm.test('posRecord inserted', () => pm.expect(res.posRecord.action).to.eql('inserted'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Huggies S4, store 101: 42 -> 40, counter 2 -> 4 >= 4. Added to the P5 picklist; counter -> 0.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:20:00Z\",\n  \"storeId\": \"101\",\n  \"register\": \"77\",\n  \"operator\": \"12\",\n  \"transactionType\": \"SALE\",\n  \"transaction\": \"1990000005\",\n  \"seqNumber\": \"1\",\n  \"sku\": \"0003600049679\",\n  \"qty\": \"2\",\n  \"regularPriceEach\": \"9.99\",\n  \"soldPriceEach\": \"9.99\",\n  \"isPriceOverride\": \"0\",\n  \"discountCode\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P7 - No stock left (no picklist, sale still counted)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":101,\"id\":101}));",
+                  "pm.test('saleProduct', () => pm.expect(res.saleProduct).to.eql({\"id\":15695037,\"sku\":\"0073109314773\",\"matchedBy\":\"sku\"}));",
+                  "pm.test('qtyStored = 1', () => pm.expect(res.qtyStored).to.eql(1));",
+                  "pm.test('deduction 0 -> 0, counter 2 -> 3', () => pm.expect(res.deduction).to.eql({",
+                  "  applied: true, before: { totalQty: 0, deductionCounter: 2 }, after: { totalQty: 0, deductionCounter: 3 },",
+                  "}));",
+                  "pm.test('picklists.result = skipped: no in-store quantity', () => pm.expect(res.picklists.result).to.eql(\"skipped: no in-store quantity\"));",
+                  "pm.test('posRecord inserted', () => pm.expect(res.posRecord.action).to.eql('inserted'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Product 15695037, store 101: total_qty stays 0 (never below 0), counter 2 -> 3.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:25:00Z\",\n  \"storeId\": \"101\",\n  \"register\": \"77\",\n  \"operator\": \"12\",\n  \"transactionType\": \"SALE\",\n  \"transaction\": \"1990000006\",\n  \"seqNumber\": \"1\",\n  \"sku\": \"0073109314773\",\n  \"qty\": \"1\",\n  \"regularPriceEach\": \"3.49\",\n  \"soldPriceEach\": \"3.49\",\n  \"isPriceOverride\": \"0\",\n  \"discountCode\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P8 - Top-up of an existing real NEW picklist",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":1221,\"id\":1221}));",
+                  "pm.test('saleProduct', () => pm.expect(res.saleProduct).to.eql({\"id\":23827981,\"sku\":\"3333333333333\",\"matchedBy\":\"sku\"}));",
+                  "pm.test('qtyStored = 1', () => pm.expect(res.qtyStored).to.eql(1));",
+                  "pm.test('deduction 12 -> 11, counter 11 -> 12', () => pm.expect(res.deduction).to.eql({",
+                  "  applied: true, before: { totalQty: 12, deductionCounter: 11 }, after: { totalQty: 11, deductionCounter: 12 },",
+                  "}));",
+                  "pm.test('picklists.result = processed', () => pm.expect(res.picklists.result).to.eql(\"processed\"));",
+                  "pm.test('item 599165 topped up by 1 case (12)', () => pm.expect(res.picklists.toppedUp).to.eql([{",
+                  "  picklistProductId: 599165, picklistId: 52625, productId: 23827981, addedCases: 1, addedQty: 12,",
+                  "}]));",
+                  "pm.test('countersReset', () => pm.expect(res.picklists.countersReset).to.eql([{\"productId\":23827981,\"by\":12,\"pickedCases\":1}]));",
+                  "pm.test('posRecord inserted', () => pm.expect(res.posRecord.action).to.eql('inserted'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Apple Juice, store 1221: 12 -> 11, counter 11 -> 12 = trigger. Item 599165 on picklist 52625: 24 -> 36, cases 2 -> 3.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:30:00Z\",\n  \"storeId\": \"1221\",\n  \"register\": \"77\",\n  \"operator\": \"12\",\n  \"transactionType\": \"SALE\",\n  \"transaction\": \"1990000007\",\n  \"seqNumber\": \"1\",\n  \"sku\": \"3333333333333\",\n  \"qty\": \"1\",\n  \"regularPriceEach\": \"2.99\",\n  \"soldPriceEach\": \"2.99\",\n  \"isPriceOverride\": \"0\",\n  \"discountCode\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P9 - Negative quantity (nothing deducted, stored with qty 0)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":101,\"id\":101}));",
+                  "pm.test('saleProduct', () => pm.expect(res.saleProduct).to.eql({\"id\":129185,\"sku\":\"0004145811704\",\"matchedBy\":\"sku\"}));",
+                  "pm.test('qtyStored = 0', () => pm.expect(res.qtyStored).to.eql(0));",
+                  "pm.test('deduction not applied', () => pm.expect(res.deduction).to.eql({ applied: false, reason: 'qty is 0 after rounding; nothing to deduct.' }));",
+                  "pm.test('picklists.result = no picklist needed', () => pm.expect(res.picklists.result).to.eql(\"no picklist needed\"));",
+                  "pm.test('posRecord inserted', () => pm.expect(res.posRecord.action).to.eql('inserted'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "-3 => 0. No deduction; the picklist step still runs (counter 4 < 12).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:35:00Z\",\n  \"storeId\": \"101\",\n  \"register\": \"77\",\n  \"operator\": \"12\",\n  \"transactionType\": \"RETURN\",\n  \"transaction\": \"1990000008\",\n  \"seqNumber\": \"1\",\n  \"sku\": \"0004145811704\",\n  \"qty\": \"-3\",\n  \"regularPriceEach\": \"4.99\",\n  \"soldPriceEach\": \"4.99\",\n  \"isPriceOverride\": \"0\",\n  \"discountCode\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P10 - Decimals and defaults",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status = processed', () => pm.expect(res.status).to.eql('processed'));",
+                  "pm.test('store', () => pm.expect(res.store).to.eql({\"externalId\":101,\"id\":101}));",
+                  "pm.test('saleProduct', () => pm.expect(res.saleProduct).to.eql({\"id\":129185,\"sku\":\"0004145811704\",\"matchedBy\":\"sku\"}));",
+                  "pm.test('qtyStored = 2', () => pm.expect(res.qtyStored).to.eql(2));",
+                  "pm.test('deduction 20 -> 18, counter 4 -> 6', () => pm.expect(res.deduction).to.eql({",
+                  "  applied: true, before: { totalQty: 20, deductionCounter: 4 }, after: { totalQty: 18, deductionCounter: 6 },",
+                  "}));",
+                  "pm.test('picklists.result = no picklist needed', () => pm.expect(res.picklists.result).to.eql(\"no picklist needed\"));",
+                  "pm.test('posRecord inserted', () => pm.expect(res.posRecord.action).to.eql('inserted'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "1.2 => 2. pos row: transaction 1, seq_number 1, operator 0, regular_price_each 0, is_price_override true, discount_code 5 (check in the DB).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:40:00Z\",\n  \"storeId\": \"101\",\n  \"register\": \"77\",\n  \"operator\": \"\",\n  \"transactionType\": \"SALE\",\n  \"transaction\": \"\",\n  \"seqNumber\": \"\",\n  \"sku\": \"0004145811704\",\n  \"qty\": \"1.2\",\n  \"regularPriceEach\": \"\",\n  \"soldPriceEach\": \"4.5\",\n  \"isPriceOverride\": \"true\",\n  \"discountCode\": \"5.9\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P11 - Code matches only a primary_upc (optional)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('matched only by primary_upc', () => pm.expect([res.saleProduct.id, res.saleProduct.matchedBy]).to.eql([null, 'primary_upc only']));",
+                  "  pm.test('deduction skipped', () => pm.expect(res.deduction.applied).to.eql(false));",
+                  "  pm.test('posRecord skipped', () => pm.expect(res.posRecord.action).to.eql('skipped'));",
+                  "} else {",
+                  "  pm.test('TEST-SKU-0001 not present: 422', () => pm.expect(res.error).to.eql('No active product found for this SKU / UPC / variant.'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Needs product TEST-SKU-0001 (primary_upc TEST-UPC-0001) from the product-feed tests. If it exists: matchedBy \"primary_upc only\", no deduction, no pos row. If it was deleted: 422.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:45:00Z\",\n  \"storeId\": \"101\",\n  \"register\": \"77\",\n  \"operator\": \"12\",\n  \"transactionType\": \"SALE\",\n  \"transaction\": \"1990000009\",\n  \"seqNumber\": \"1\",\n  \"sku\": \"TEST-UPC-0001\",\n  \"qty\": \"1\",\n  \"regularPriceEach\": \"10.5\",\n  \"soldPriceEach\": \"10.5\",\n  \"isPriceOverride\": \"0\",\n  \"discountCode\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P12 - Unknown store (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('Store not found for this storeId (stores.external_id).'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "No store has external_id 7777.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:50:00Z\",\n  \"storeId\": \"7777\",\n  \"register\": \"77\",\n  \"sku\": \"0004145811704\",\n  \"qty\": \"1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P13 - Inactive or unknown product (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('error message', () => pm.expect(res.error).to.eql('No active product found for this SKU / UPC / variant.'));",
+                  "pm.test('sku echoed', () => pm.expect(res.sku).to.eql('0000008011135'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Product 0000008011135 is inactive; a made-up SKU gives the same result.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"2026-10-14T10:50:00Z\",\n  \"storeId\": \"101\",\n  \"register\": \"77\",\n  \"sku\": \"0000008011135\",\n  \"qty\": \"1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "P14 - Validation errors (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('errors.timestamp', () => pm.expect(res.errors.timestamp).to.eql(['The timestamp field must be a valid date.']));",
+                  "pm.test('errors.storeId', () => pm.expect(res.errors.storeId).to.eql(['The store id field must be an integer.']));",
+                  "pm.test('errors.register', () => pm.expect(res.errors.register).to.eql(['The selected register is invalid.']));",
+                  "pm.test('errors.sku', () => pm.expect(res.errors.sku).to.eql(['The sku field is required.']));",
+                  "pm.test('errors.qty', () => pm.expect(res.errors.qty).to.eql(['The qty field must be a number.']));",
+                  "pm.test('errors.transaction', () => pm.expect(res.errors.transaction).to.eql(['The transaction field must be an integer.']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Six invalid fields. Nothing is saved.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timestamp\": \"not a date\",\n  \"storeId\": \"abc\",\n  \"register\": \"0\",\n  \"sku\": \"\",\n  \"qty\": \"x\",\n  \"transaction\": \"1.5\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/pos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pos"
               ]
             }
           }
